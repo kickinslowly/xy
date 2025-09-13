@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive Coordinate Plane</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="toolbar">
+    <div class="group">
+      <button id="zoomOut" title="Zoom out (-)">−</button>
+      <button id="zoomIn" title="Zoom in (+)">+</button>
+      <label>
+        Pixels per unit:
+        <input id="ppu" type="number" min="5" max="400" step="1" value="50" />
+      </label>
+      <label>
+        Grid step (units):
+        <select id="gridStep">
+          <option value="0.5">0.5</option>
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="group">
+      <label>
+        Vertex color:
+        <input id="vertexColor" type="color" value="#d81b60" />
+      </label>
+      <label>
+        Vertex size:
+        <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" />
+      </label>
+      <button id="clearVertices">Clear vertices</button>
+    </div>
+
+    <div class="group">
+      <label>
+        Line color:
+        <input id="lineColor" type="color" value="#1e88e5" />
+      </label>
+      <label>
+        Line thickness:
+        <input id="lineWidth" type="number" min="1" max="20" step="1" value="2" />
+      </label>
+      <button id="connectSelected">Connect selected</button>
+      <button id="clearLines">Clear lines</button>
+    </div>
+
+    <div class="group">
+      <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="clearAll">Clear all</button>
+      <span class="hint">Tip: Click to add vertices. Click a vertex to select/deselect. Use mouse wheel or +/- to zoom. </span>
+    </div>
+  </div>
+
+  <div class="main-wrap">
+    <div class="canvas-wrap">
+      <canvas id="plane" width="1000" height="650" aria-label="Interactive coordinate plane" role="img"></canvas>
+    </div>
+    <aside class="sidebar" aria-label="Vertex readout">
+      <div class="sidebar-header">
+        <h3>Vertices</h3>
+        <small>Click canvas to add. Edit labels here.</small>
+      </div>
+      <ul id="vertexList" class="vertex-list" aria-live="polite"></ul>
+    </aside>
+  </div>
+
+  <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
