@@ -22,6 +22,10 @@
   const undoBtn = document.getElementById('undoBtn');
   const vertexListEl = document.getElementById('vertexList');
 
+  // Reflection UI elements
+  const reflectBtn = document.getElementById('reflectBtn');
+  const modeHint = document.getElementById('modeHint');
+
   // Coordinate system state
   let pixelsPerUnit = clamp(parseFloat(ppuInput.value) || 50, 5, 400);
   let gridStepUnits = parseFloat(gridStepSelect.value) || 1; // grid line spacing in world units
@@ -34,6 +38,14 @@
   let selectionCounter = 1; // for ordering selected vertices
   const vertices = []; // {id, x, y, color, size, selected, selectedAt}
   const lines = [];    // {aId, bId, color, width}
+
+  // Reflection state and animation
+  const reflect = {
+    active: false,
+    p1: null,      // first point in world coords
+    preview: null, // current mouse world pos when picking second point
+    fade: null     // {a:{x,y}, b:{x,y}, start:number, duration:number}
+  };
 
   // History (undo) stack
   const history = [];
@@ -301,11 +313,134 @@
     }
   }
 
+  // Draw a world-space line with optional dash and alpha
+  function drawStyledWorldLine(a, b, color = '#333', width = 2, dash = null, alpha = 1) {
+    const pa = worldToScreen(a);
+    const pb = worldToScreen(b);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (dash && dash.length) ctx.setLineDash(dash);
+    if (alpha != null) ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawReflectionOverlay() {
+    // Active picking preview
+    if (reflect.active) {
+      if (reflect.p1 && reflect.preview) {
+        drawStyledWorldLine(reflect.p1, reflect.preview, '#2e7d32', 2, [8,6], 0.85);
+      }
+    }
+    // Fading line after commit
+    if (reflect.fade) {
+      const { a, b, start, duration } = reflect.fade;
+      const now = performance.now();
+      const t = Math.min(1, (now - start) / duration);
+      const alpha = 1 - t;
+      if (alpha > 0) {
+        drawStyledWorldLine(a, b, '#2e7d32', 3, [4,4], alpha);
+        // continue animation
+        requestAnimationFrame(() => draw());
+      } else {
+        reflect.fade = null;
+      }
+    }
+  }
+
+  // --- Reflection logic ---
+  function reflectPointAcrossLine(P, A, B) {
+    const abx = B.x - A.x, aby = B.y - A.y;
+    const len2 = abx*abx + aby*aby;
+    if (len2 < 1e-12) return { x: P.x, y: P.y };
+    const apx = P.x - A.x, apy = P.y - A.y;
+    const t = (apx * abx + apy * aby) / len2;
+    const projx = A.x + abx * t;
+    const projy = A.y + aby * t;
+    return { x: 2 * projx - P.x, y: 2 * projy - P.y };
+  }
+
+  function performReflectionAcrossLine(A, B) {
+    // Duplicate selected vertices and corresponding lines; keep originals
+    const selected = vertices.filter(v => v.selected);
+    if (selected.length === 0) return;
+
+    // Map old vertex id -> new vertex id
+    const idMap = new Map();
+
+    // First, create reflected vertices
+    for (const v of selected) {
+      const rp = reflectPointAcrossLine({ x: v.x, y: v.y }, A, B);
+      const id = nextVertexId++;
+      const newV = {
+        id,
+        x: parseFloat(rp.x.toFixed(10)),
+        y: parseFloat(rp.y.toFixed(10)),
+        color: v.color,
+        size: v.size,
+        selected: false,
+        selectedAt: undefined,
+        label: defaultLabelForId(id),
+      };
+      vertices.push(newV);
+      idMap.set(v.id, id);
+    }
+
+    // Then, duplicate lines where both endpoints were selected
+    for (const ln of lines.slice()) {
+      if (idMap.has(ln.aId) && idMap.has(ln.bId)) {
+        const aNew = idMap.get(ln.aId);
+        const bNew = idMap.get(ln.bId);
+        // No need to check duplicates as new vertex ids are unique, but keep guard for safety
+        if (!lineExists(aNew, bNew)) {
+          lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
+        }
+      }
+    }
+
+    draw();
+    pushHistory();
+  }
+
+  function updateReflectUi() {
+    if (reflectBtn) {
+      if (reflect.active) {
+        reflectBtn.classList.add('active');
+        reflectBtn.textContent = 'Cancel reflect';
+      } else {
+        reflectBtn.classList.remove('active');
+        reflectBtn.textContent = 'Reflect';
+      }
+    }
+    if (modeHint) modeHint.style.display = reflect.active ? '' : 'none';
+  }
+
+  function startReflectMode() {
+    reflect.active = true;
+    reflect.p1 = null;
+    reflect.preview = null;
+    updateReflectUi();
+    draw();
+  }
+  function cancelReflectMode() {
+    reflect.active = false;
+    reflect.p1 = null;
+    reflect.preview = null;
+    updateReflectUi();
+    draw();
+  }
+
   function draw() {
     clear();
     drawGrid();
     drawLines();
     drawVertices();
+    drawReflectionOverlay();
     updateSidebar();
   }
 
@@ -393,6 +528,9 @@
       return;
     }
 
+    // In reflect mode, prevent starting a drag
+    if (reflect.active) { evt.preventDefault(); return; }
+
     const hit = hitTestVertex(ms);
     if (hit) {
       isDragging = true;
@@ -419,6 +557,14 @@
 
   // Drag move / Pan move
   window.addEventListener('mousemove', (evt) => {
+    // Update reflect preview while picking the second point
+    if (reflect.active && reflect.p1 && !isPanning) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      reflect.preview = snapToGrid(mw);
+      // Only redraw if not dragging/panning to avoid extra work
+      if (!isDragging) draw();
+    }
     // Panning takes precedence when active
     if (isPanning) {
       const ms = getMousePos(evt);
@@ -506,6 +652,35 @@
     if (suppressNextClick) { suppressNextClick = false; return; }
     // Ignore clicks while space-pan mode is active
     if (isSpacePan || isPanning) { evt.preventDefault(); return; }
+
+    // Reflect mode: capture points instead of toggling/adding vertices
+    if (reflect.active) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const pt = snapToGrid(mw);
+      if (!reflect.p1) {
+        reflect.p1 = pt;
+        reflect.preview = pt;
+        draw();
+      } else {
+        // second point
+        if (Math.abs(pt.x - reflect.p1.x) < 1e-10 && Math.abs(pt.y - reflect.p1.y) < 1e-10) {
+          // ignore same point
+          return;
+        }
+        performReflectionAcrossLine(reflect.p1, pt);
+        // start fade
+        reflect.fade = { a: reflect.p1, b: pt, start: performance.now(), duration: 700 };
+        // reset mode
+        reflect.active = false;
+        reflect.p1 = null;
+        reflect.preview = null;
+        updateReflectUi();
+        draw();
+      }
+      evt.preventDefault();
+      return;
+    }
 
     const ms = getMousePos(evt);
     const hit = hitTestVertex(ms);
@@ -624,6 +799,13 @@
     pushHistory();
   });
 
+  // Reflect button toggles reflect mode
+  if (reflectBtn) {
+    reflectBtn.addEventListener('click', () => {
+      if (reflect.active) cancelReflectMode(); else startReflectMode();
+    });
+  }
+
   clearVerticesBtn.addEventListener('click', () => {
     vertices.length = 0;
     // clear lines as well since they reference vertices
@@ -706,6 +888,13 @@
     const active = document.activeElement;
     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
 
+    // Escape cancels reflect mode
+    if (e.key === 'Escape' && reflect.active) {
+      cancelReflectMode();
+      e.preventDefault();
+      return;
+    }
+
     // Space: temporary grab/pan mode (ignore when typing in inputs)
     if (e.code === 'Space' && !isInput) {
       if (!isSpacePan) {
@@ -753,4 +942,5 @@
   draw();
   pushHistory();
   updateUndoButton();
+  updateReflectUi();
 })();
