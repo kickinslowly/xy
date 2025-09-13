@@ -16,6 +16,7 @@
   const lineWidthInput = document.getElementById('lineWidth');
   const connectSelectedBtn = document.getElementById('connectSelected');
   const clearLinesBtn = document.getElementById('clearLines');
+  const closeLoopChk = document.getElementById('closeLoop');
 
   const clearAllBtn = document.getElementById('clearAll');
   const undoBtn = document.getElementById('undoBtn');
@@ -360,8 +361,152 @@
     return best;
   }
 
-  // Mouse interaction
+  // Mouse interaction and dragging vertices
+  let isDragging = false;
+  let dragVertex = null;
+  let dragOffsetWorld = { x: 0, y: 0 };
+  let dragMoved = false;
+  let suppressNextClick = false;
+  // Group-drag state
+  let isGroupDrag = false;
+  let groupDragStartPositions = null; // Map of vertexId -> {x,y}
+  let dragStartPos = null; // starting position of the dragged vertex
+
+  // Pan mode (hold Space to pan)
+  let isPanning = false;
+  let isSpacePan = false;
+  let panMoved = false;
+  let lastMousePos = null;
+
+  // Drag start / Pan start
+  canvas.addEventListener('mousedown', (evt) => {
+    if (evt.button !== 0) return; // left button only
+    const ms = getMousePos(evt);
+
+    // If Space is held, start panning instead of vertex drag
+    if (isSpacePan) {
+      isPanning = true;
+      lastMousePos = ms;
+      panMoved = false;
+      canvas.style.cursor = 'grabbing';
+      evt.preventDefault();
+      return;
+    }
+
+    const hit = hitTestVertex(ms);
+    if (hit) {
+      isDragging = true;
+      dragVertex = hit;
+      const mw = screenToWorld(ms);
+      dragOffsetWorld = { x: hit.x - mw.x, y: hit.y - mw.y };
+      dragStartPos = { x: hit.x, y: hit.y };
+      // Determine if we should group-drag: only when the hit vertex is selected and there is at least one selected
+      const selected = vertices.filter(v => v.selected);
+      if (hit.selected && selected.length > 0) {
+        isGroupDrag = true;
+        groupDragStartPositions = new Map();
+        for (const v of selected) {
+          groupDragStartPositions.set(v.id, { x: v.x, y: v.y });
+        }
+      } else {
+        isGroupDrag = false;
+        groupDragStartPositions = null;
+      }
+      dragMoved = false;
+      evt.preventDefault();
+    }
+  });
+
+  // Drag move / Pan move
+  window.addEventListener('mousemove', (evt) => {
+    // Panning takes precedence when active
+    if (isPanning) {
+      const ms = getMousePos(evt);
+      if (lastMousePos) {
+        const dx = ms.x - lastMousePos.x;
+        const dy = ms.y - lastMousePos.y;
+        if (dx !== 0 || dy !== 0) {
+          origin.x += dx;
+          origin.y += dy;
+          panMoved = true;
+          draw();
+        }
+      }
+      lastMousePos = ms;
+      evt.preventDefault();
+      return;
+    }
+
+    if (!isDragging || !dragVertex) return;
+    const ms = getMousePos(evt);
+    const mw = screenToWorld(ms);
+    const target = { x: mw.x + dragOffsetWorld.x, y: mw.y + dragOffsetWorld.y };
+    const snapped = snapToGrid(target);
+
+    if (isGroupDrag && groupDragStartPositions && dragStartPos) {
+      const dx = snapped.x - dragStartPos.x;
+      const dy = snapped.y - dragStartPos.y;
+      let anyChanged = false;
+      for (const [id, start] of groupDragStartPositions.entries()) {
+        const v = vertices.find(v => v.id === id);
+        if (!v) continue;
+        const newPos = snapToGrid({ x: start.x + dx, y: start.y + dy });
+        if (newPos.x !== v.x || newPos.y !== v.y) {
+          v.x = newPos.x;
+          v.y = newPos.y;
+          anyChanged = true;
+        }
+      }
+      if (anyChanged) {
+        dragMoved = true;
+        draw(); // live update canvas and sidebar labels
+      }
+    } else {
+      if (snapped.x !== dragVertex.x || snapped.y !== dragVertex.y) {
+        dragVertex.x = snapped.x;
+        dragVertex.y = snapped.y;
+        dragMoved = true;
+        draw(); // live update canvas and sidebar labels
+      }
+    }
+    evt.preventDefault();
+  });
+
+  // Drag end / Pan end
+  window.addEventListener('mouseup', (evt) => {
+    // End panning if active
+    if (isPanning) {
+      isPanning = false;
+      lastMousePos = null;
+      if (panMoved) {
+        suppressNextClick = true; // prevent click actions after a pan drag
+      }
+      panMoved = false;
+      canvas.style.cursor = isSpacePan ? 'grab' : '';
+      evt.preventDefault();
+      return;
+    }
+
+    if (!isDragging) return;
+    isDragging = false;
+    dragVertex = null;
+    // reset group-drag state
+    isGroupDrag = false;
+    groupDragStartPositions = null;
+    dragStartPos = null;
+    if (dragMoved) {
+      pushHistory();
+      suppressNextClick = true; // prevent click toggle/add right after a drag
+    }
+    dragMoved = false;
+  });
+
+  // Click: toggle selection or add vertex when not dragging or panning
   canvas.addEventListener('click', (evt) => {
+    if (suppressNextClick) { suppressNextClick = false; return; }
+    // Ignore clicks while space-pan mode is active
+    if (isSpacePan || isPanning) { evt.preventDefault(); return; }
+
     const ms = getMousePos(evt);
     const hit = hitTestVertex(ms);
     if (hit) {
@@ -442,15 +587,39 @@
     setPixelsPerUnit(pixelsPerUnit * factor, anchor);
   }, { passive: false });
 
-  // Connect selected vertices into lines in selection order
+  // Guard: check if a line (undirected) already exists
+  function lineExists(aId, bId) {
+    return lines.some(l => (l.aId === aId && l.bId === bId) || (l.aId === bId && l.bId === aId));
+  }
+
+  // Connect selected vertices into lines in selection order, optionally closing the loop
   connectSelectedBtn.addEventListener('click', () => {
-    const selected = vertices.filter(v => v.selected).sort((a, b) => (a.selectedAt ?? 0) - (b.selectedAt ?? 0));
+    const selected = vertices
+      .filter(v => v.selected)
+      .sort((a, b) => (a.selectedAt ?? 0) - (b.selectedAt ?? 0));
     if (selected.length < 2) return;
+
     const color = lineColorInput.value;
     const width = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+
+    // Connect consecutive vertices
     for (let i = 0; i < selected.length - 1; i++) {
-      lines.push({ aId: selected[i].id, bId: selected[i+1].id, color, width });
+      const aId = selected[i].id;
+      const bId = selected[i + 1].id;
+      if (!lineExists(aId, bId)) {
+        lines.push({ aId, bId, color, width });
+      }
     }
+
+    // Optionally close the loop if 3+ vertices and the checkbox is on
+    if (closeLoopChk && closeLoopChk.checked && selected.length >= 3) {
+      const firstId = selected[0].id;
+      const lastId = selected[selected.length - 1].id;
+      if (!lineExists(firstId, lastId)) {
+        lines.push({ aId: lastId, bId: firstId, color, width });
+      }
+    }
+
     draw();
     pushHistory();
   });
@@ -532,10 +701,20 @@
     undoBtn.addEventListener('click', () => undo());
   }
 
-  // Keyboard shortcuts for zoom +/- and Undo (Ctrl/Cmd+Z)
+  // Keyboard shortcuts: Space (pan), zoom +/- and Undo (Ctrl/Cmd+Z)
   window.addEventListener('keydown', (e) => {
     const active = document.activeElement;
     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
+
+    // Space: temporary grab/pan mode (ignore when typing in inputs)
+    if (e.code === 'Space' && !isInput) {
+      if (!isSpacePan) {
+        isSpacePan = true;
+        if (!isPanning) canvas.style.cursor = 'grab';
+      }
+      e.preventDefault();
+      return;
+    }
 
     // Undo
     if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
@@ -549,6 +728,25 @@
     // Zoom
     if (e.key === '+') { setPixelsPerUnit(pixelsPerUnit * ZOOM_STEP); }
     else if (e.key === '-') { setPixelsPerUnit(pixelsPerUnit / ZOOM_STEP); }
+  });
+
+  // Space release: exit pan mode
+  window.addEventListener('keyup', (e) => {
+    const active = document.activeElement;
+    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
+
+    if (e.code === 'Space') {
+      // End panning if still active
+      if (isPanning) {
+        isPanning = false;
+        lastMousePos = null;
+        if (panMoved) suppressNextClick = true;
+        panMoved = false;
+      }
+      isSpacePan = false;
+      canvas.style.cursor = '';
+      if (!isInput) e.preventDefault();
+    }
   });
 
   // Initial draw and history init
