@@ -296,15 +296,25 @@
     ctx.lineTo(yAxisX, h);
     ctx.stroke();
 
-    // Ticks and labels
+    // Ticks and labels (adaptive to zoom)
     ctx.fillStyle = '#455a64';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+
+    // Determine dynamic label density and font size so that some labels remain visible when zoomed out.
+    const minLabelSpacingPx = 50; // desired minimum pixel spacing between labels
+    const minFontPx = 8;
+    const maxFontPx = 14;
+    const stepPxForLabels = Math.abs(gridStepUnits * pixelsPerUnit) || 1;
+    const labelSkip = Math.max(1, Math.ceil(minLabelSpacingPx / stepPxForLabels)); // show every Nth tick label
+    const dynamicFontPx = clamp(Math.round(Math.min(maxFontPx, Math.max(minFontPx, stepPxForLabels * 0.35))), minFontPx, maxFontPx);
+
+    ctx.font = `${dynamicFontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
     const tickLen = 6;
 
-    for (let x = startX; x <= endX; x += gridStepUnits) {
+    // X-axis ticks and labels
+    for (let x = startX, i = 0; x <= endX + 1e-10; x += gridStepUnits, i++) {
       if (Math.abs(x) < 1e-8) continue; // skip origin tick on x-axis
       const p = worldToScreen({ x, y: 0 });
       ctx.beginPath();
@@ -313,12 +323,16 @@
       ctx.strokeStyle = '#607d8b';
       ctx.lineWidth = 1;
       ctx.stroke();
-      if (pixelsPerUnit >= 25) ctx.fillText(formatNumber(x), p.x, xAxisY + tickLen + 2);
+      // Draw label only on every Nth tick to prevent overcrowding
+      if (i % labelSkip === 0) {
+        ctx.fillText(formatNumber(x), p.x, xAxisY + tickLen + 2);
+      }
     }
 
+    // Y-axis ticks and labels
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    for (let y = startY; y <= endY; y += gridStepUnits) {
+    for (let y = startY, j = 0; y <= endY + 1e-10; y += gridStepUnits, j++) {
       if (Math.abs(y) < 1e-8) continue; // skip origin tick on y-axis
       const p = worldToScreen({ x: 0, y });
       ctx.beginPath();
@@ -327,7 +341,9 @@
       ctx.strokeStyle = '#607d8b';
       ctx.lineWidth = 1;
       ctx.stroke();
-      if (pixelsPerUnit >= 25) ctx.fillText(formatNumber(y), yAxisX + tickLen + 3, p.y);
+      if (j % labelSkip === 0) {
+        ctx.fillText(formatNumber(y), yAxisX + tickLen + 3, p.y);
+      }
     }
   }
 
