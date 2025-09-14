@@ -9,7 +9,7 @@
 <body>
   <header class="app-header" role="banner">
     <nav class="toolbar panels" aria-label="Canvas controls">
-      <details class="panel" open>
+      <details class="panel">
         <summary>View</summary>
         <div class="group" role="group" aria-label="View controls">
           <button id="zoomOut" type="button" title="Zoom out (-)" aria-label="Zoom out">−</button>
@@ -65,14 +65,17 @@
         </div>
       </details>
 
-      <details class="panel">
-        <summary>Transform</summary>
-        <div class="group" role="group" aria-label="Reflect">
+      <div class="panel">
+        <div class="group" role="group" aria-label="Transforms">
           <button id="reflectBtn" type="button" title="Reflect selected vertices across a line">Reflect</button>
+          <button id="rotateBtn" type="button" title="Rotate selected vertices around a point">Rotate</button>
+          <button id="scaleBtn" type="button" title="Scale selected vertices from a point">Scale</button>
+          <button id="translateBtn" type="button" title="Translate selected vertices by a vector">Translate</button>
+        </div>
+        <div id="reflectExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Reflect settings">
           <span id="modeHint" class="hint" style="display:none;">Click two points to define a reflection line. Press Esc to cancel.</span>
         </div>
-        <div class="group" role="group" aria-label="Rotate">
-          <button id="rotateBtn" type="button" title="Rotate selected vertices around a point">Rotate</button>
+        <div id="rotateExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Rotate settings">
           <label for="rotateAngle">Angle (deg):</label>
           <input id="rotateAngle" type="number" step="0.1" value="0" aria-label="Rotation angle in degrees" />
           <label for="rotateDir">Direction:</label>
@@ -82,8 +85,12 @@
           </select>
           <span id="rotateHint" class="hint" style="display:none;">Click to choose rotation center, then drag to rotate. Or type an angle and press Enter. Esc to cancel.</span>
         </div>
-        <div class="group" role="group" aria-label="Translate">
-          <button id="translateBtn" type="button" title="Translate selected vertices by a vector">Translate</button>
+        <div id="scaleExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Scale settings">
+          <label for="scaleFactor">Factor:</label>
+          <input id="scaleFactor" type="number" step="0.1" value="1" aria-label="Scale factor" />
+          <span id="scaleHint" class="hint" style="display:none;">Click to choose scale center, then drag to scale. Or type a factor and press Enter. Esc to cancel.</span>
+        </div>
+        <div id="translateExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Translate settings">
           <label for="translateDx">dx:</label>
           <input id="translateDx" type="number" step="0.1" value="0" aria-label="Translate dx" />
           <label for="translateDy">dy:</label>
@@ -91,16 +98,16 @@
           <button id="translateApply" type="button" title="Apply numeric translation">Apply</button>
           <span id="translateHint" class="hint" style="display:none;">Click and drag to set translation vector, or type dx, dy and press Apply. Esc to cancel.</span>
         </div>
-      </details>
+      </div>
 
-      <details class="panel">
-        <summary>History</summary>
-        <div class="group" role="group" aria-label="History actions">
+      <div class="panel">
+        <div class="group" role="group" aria-label="Global actions">
           <button id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
-          <button id="clearAll" type="button">Clear all</button>
-          <span class="hint">Tip: Click canvas to add vertices. Click a vertex or image to select it. Selected images have a bold yellow outline. Use mouse wheel or +/- to zoom.</span>
+          <button id="redoBtn" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
+          <button id="clearSelection" type="button" title="Clear selection">Clear selection</button>
+          <button id="clearAll" type="button" title="Remove all content">Clear all</button>
         </div>
-      </details>
+      </div>
     </nav>
   </header>
 

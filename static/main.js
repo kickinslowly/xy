@@ -21,6 +21,8 @@
 
   const clearAllBtn = document.getElementById('clearAll');
   const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const clearSelectionBtn = document.getElementById('clearSelection');
   const vertexListEl = document.getElementById('vertexList');
 
   // Reflection UI elements
@@ -39,6 +41,17 @@
   const translateDyInput = document.getElementById('translateDy');
   const translateApplyBtn = document.getElementById('translateApply');
   const translateHint = document.getElementById('translateHint');
+
+  // Scale UI elements
+  const scaleBtn = document.getElementById('scaleBtn');
+  const scaleFactorInput = document.getElementById('scaleFactor');
+  const scaleHint = document.getElementById('scaleHint');
+
+  // Transform extras containers
+  const reflectExtras = document.getElementById('reflectExtras');
+  const rotateExtras = document.getElementById('rotateExtras');
+  const scaleExtras = document.getElementById('scaleExtras');
+  const translateExtras = document.getElementById('translateExtras');
 
   // Image UI elements
   const addImageBtn = document.getElementById('addImageBtn');
@@ -91,8 +104,19 @@
     fade: null              // {from:{x,y}, to:{x,y}, start:number, duration:number}
   };
 
-  // History (undo) stack
+  // Scaling state and animation
+  const scale = {
+    active: false,
+    pivot: null,          // {x,y} scale center in world coords
+    startDist: 0,         // starting distance from pivot to initial drag point
+    previewFactor: 1,     // current scale factor during preview
+    isScaling: false,
+    fade: null            // {pivot:{x,y}, start:number, duration:number}
+  };
+
+  // History (undo/redo) stacks
   const history = [];
+  const redoStack = [];
   function makeSnapshot() {
     return {
       vertices: vertices.map(v => ({...v})),
@@ -115,15 +139,37 @@
     selectionCounter = snap.selectionCounter || 1;
   }
   function canUndo() { return history.length > 1; }
+  function canRedo() { return redoStack.length > 0; }
   function updateUndoButton() { if (undoBtn) undoBtn.disabled = !canUndo(); }
-  function pushHistory() { history.push(makeSnapshot()); updateUndoButton(); }
+  function updateRedoButton() { if (redoBtn) redoBtn.disabled = !canRedo(); }
+  function pushHistory() {
+    history.push(makeSnapshot());
+    // New actions invalidate the redo stack
+    redoStack.length = 0;
+    updateUndoButton();
+    updateRedoButton();
+  }
   function undo() {
     if (!canUndo()) return;
+    const current = history[history.length - 1];
+    const prev = history[history.length - 2];
+    // Move current state to redo stack
+    redoStack.push(current);
+    // Pop current from history, keep prev as the latest
     history.pop();
-    const prev = history[history.length - 1];
     restoreFromSnapshot(prev);
     draw();
     updateUndoButton();
+    updateRedoButton();
+  }
+  function redo() {
+    if (!canRedo()) return;
+    const next = redoStack.pop();
+    history.push(next);
+    restoreFromSnapshot(next);
+    draw();
+    updateUndoButton();
+    updateRedoButton();
   }
 
   // Resize handler to match canvas backing store to its CSS size
@@ -305,6 +351,13 @@
     s = String(s).slice(0, 20);
     return s.replace(/\s+/g, ' ').trim();
   }
+  
+  // Given a source vertex, produce its prime label (e.g., A -> A', A' -> A'').
+  function primeLabelFrom(v) {
+    const base = sanitizeLabel(v.label || defaultLabelForId(v.id));
+    const baseNonEmpty = (base && base.length) ? base : defaultLabelForId(v.id);
+    return baseNonEmpty + "'";
+  }
 
   function drawVertices() {
     for (const v of vertices) {
@@ -436,7 +489,7 @@
         size: v.size,
         selected: false,
         selectedAt: undefined,
-        label: defaultLabelForId(id),
+        label: primeLabelFrom(v),
       };
       vertices.push(newV);
       idMap.set(v.id, id);
@@ -477,6 +530,7 @@
         reflectBtn.textContent = 'Reflect';
       }
     }
+    if (reflectExtras) reflectExtras.style.display = reflect.active ? '' : 'none';
     if (modeHint) modeHint.style.display = reflect.active ? '' : 'none';
   }
 
@@ -524,7 +578,7 @@
         size: v.size,
         selected: false,
         selectedAt: undefined,
-        label: defaultLabelForId(id),
+        label: primeLabelFrom(v),
       };
       vertices.push(newV);
       idMap.set(v.id, id);
@@ -621,6 +675,7 @@
         rotateBtn.textContent = 'Rotate';
       }
     }
+    if (rotateExtras) rotateExtras.style.display = rotate.active ? '' : 'none';
     if (rotateHint) rotateHint.style.display = rotate.active ? '' : 'none';
     // angle input reflects current preview if present
     if (rotateAngleInput && rotateDirSelect) {
@@ -666,7 +721,7 @@
         size: v.size,
         selected: false,
         selectedAt: undefined,
-        label: defaultLabelForId(id),
+        label: primeLabelFrom(v),
       };
       vertices.push(newV);
       idMap.set(v.id, id);
@@ -735,6 +790,7 @@
         translateBtn.textContent = 'Translate';
       }
     }
+    if (translateExtras) translateExtras.style.display = translate.active ? '' : 'none';
     if (translateHint) translateHint.style.display = translate.active ? '' : 'none';
   }
 
@@ -752,6 +808,160 @@
     translate.previewOffset = { x: 0, y: 0 };
     translate.isTranslating = false;
     updateTranslateUi();
+    draw();
+  }
+
+  // --- Scaling helpers and logic ---
+  function scalePointAround(P, O, k) {
+    const rx = (P.x - O.x) * k;
+    const ry = (P.y - O.y) * k;
+    return { x: parseFloat((O.x + rx).toFixed(10)), y: parseFloat((O.y + ry).toFixed(10)) };
+  }
+  function performScaleAroundPoint(O, k) {
+    if (!isFinite(k) || Math.abs(k) < 1e-12) return;
+    const selectedVerts = vertices.filter(v => v.selected);
+    const selectedImages = images.filter(im => im.selected);
+    if (selectedVerts.length === 0 && selectedImages.length === 0) return;
+    const idMap = new Map();
+    for (const v of selectedVerts) {
+      const sp = snapToGrid(scalePointAround(v, O, k));
+      const id = nextVertexId++;
+      const newV = {
+        id,
+        x: sp.x,
+        y: sp.y,
+        color: v.color,
+        size: v.size,
+        selected: false,
+        selectedAt: undefined,
+        label: primeLabelFrom(v),
+      };
+      vertices.push(newV);
+      idMap.set(v.id, id);
+    }
+    // Duplicate connecting lines where both endpoints were selected
+    for (const ln of lines.slice()) {
+      if (idMap.has(ln.aId) && idMap.has(ln.bId)) {
+        const aNew = idMap.get(ln.aId);
+        const bNew = idMap.get(ln.bId);
+        if (!lineExists(aNew, bNew)) {
+          lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
+        }
+      }
+    }
+    // Duplicate selected images by remapping their four vertex IDs via idMap
+    for (const im of selectedImages) {
+      if (!im.vertexIds || im.vertexIds.length !== 4) continue;
+      const mapped = im.vertexIds.map(oldId => idMap.get(oldId));
+      if (mapped.every(id => typeof id === 'number')) {
+        images.push({ id: nextImageId++, src: im.src, vertexIds: mapped, selected: false });
+      }
+    }
+    draw();
+    pushHistory();
+  }
+
+  function drawScaleOverlay() {
+    if (scale.active && scale.pivot) {
+      const ps = worldToScreen(scale.pivot);
+      // pivot crosshair
+      ctx.save();
+      ctx.strokeStyle = '#2e7d32';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ps.x - 6, ps.y);
+      ctx.lineTo(ps.x + 6, ps.y);
+      ctx.moveTo(ps.x, ps.y - 6);
+      ctx.lineTo(ps.x, ps.y + 6);
+      ctx.stroke();
+      ctx.restore();
+
+      if (scale.isScaling && scale.startDist > 0) {
+        const r0px = scale.startDist * pixelsPerUnit;
+        const r1px = Math.max(0, r0px * (scale.previewFactor || 1));
+        ctx.save();
+        // base radius dashed
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = '#2e7d3270';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, r0px, 0, Math.PI * 2);
+        ctx.stroke();
+        // scaled radius solid
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#2e7d32';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, r1px, 0, Math.PI * 2);
+        ctx.stroke();
+        // label
+        ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#1b5e20';
+        const fac = scale.previewFactor || 1;
+        const label = `×${formatNumber(fac)}`;
+        ctx.fillText(label, ps.x + 8, ps.y + 8);
+        ctx.restore();
+      }
+    }
+    // Fade after commit
+    if (scale.fade) {
+      const { pivot, start, duration } = scale.fade;
+      const now = performance.now();
+      const t = Math.min(1, (now - start) / duration);
+      const alpha = 1 - t;
+      if (alpha > 0) {
+        const ps = worldToScreen(pivot);
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.strokeStyle = '#2e7d32';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        requestAnimationFrame(() => draw());
+      } else {
+        scale.fade = null;
+      }
+    }
+  }
+
+  function updateScaleUi() {
+    if (scaleBtn) {
+      if (scale.active) {
+        scaleBtn.classList.add('active');
+        scaleBtn.textContent = 'Cancel scale';
+      } else {
+        scaleBtn.classList.remove('active');
+        scaleBtn.textContent = 'Scale';
+      }
+    }
+    if (scaleExtras) scaleExtras.style.display = scale.active ? '' : 'none';
+    if (scaleHint) scaleHint.style.display = scale.active ? '' : 'none';
+    if (scaleFactorInput) {
+      const val = scale.previewFactor || 1;
+      if (isFinite(val)) scaleFactorInput.value = (Math.round(val * 1000) / 1000).toString();
+    }
+  }
+
+  function startScaleMode() {
+    scale.active = true;
+    scale.pivot = null;
+    scale.startDist = 0;
+    scale.previewFactor = 1;
+    scale.isScaling = false;
+    updateScaleUi();
+    draw();
+  }
+  function cancelScaleMode() {
+    scale.active = false;
+    scale.pivot = null;
+    scale.startDist = 0;
+    scale.previewFactor = 1;
+    scale.isScaling = false;
+    updateScaleUi();
     draw();
   }
 
@@ -1008,6 +1218,7 @@
     drawVertices();
     drawReflectionOverlay();
     drawRotationOverlay();
+    drawScaleOverlay();
     drawTranslationOverlay();
     drawSelectionRectOverlay();
     updateSidebar();
@@ -1143,6 +1354,33 @@
       return;
     }
 
+    // Scale mode: first click picks pivot; second drag sets factor
+    if (scale.active) {
+      const mw = screenToWorld(ms);
+      const pt = snapToGrid(mw);
+      if (!scale.pivot) {
+        scale.pivot = pt;
+        scale.startDist = 0;
+        scale.previewFactor = 1;
+        scale.isScaling = false;
+        updateScaleUi();
+        draw();
+        suppressNextClick = true;
+      } else {
+        const dx = pt.x - scale.pivot.x;
+        const dy = pt.y - scale.pivot.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= 1e-12) {
+          scale.startDist = d;
+          scale.previewFactor = 1;
+          scale.isScaling = true;
+          suppressNextClick = true;
+        }
+      }
+      evt.preventDefault();
+      return;
+    }
+
     // Translate mode: start translation drag from current mouse world pos
     if (translate.active) {
       const mw = screenToWorld(ms);
@@ -1249,6 +1487,24 @@
       evt.preventDefault();
       return;
     }
+    // Update scale preview while dragging
+    if (scale.active && scale.isScaling && scale.pivot && !isPanning) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const dx = mw.x - scale.pivot.x;
+      const dy = mw.y - scale.pivot.y;
+      const d = Math.hypot(dx, dy);
+      if (scale.startDist > 0) {
+        const k = d / scale.startDist;
+        // avoid zero and extremes
+        scale.previewFactor = clamp(k, 0.01, 100);
+        updateScaleUi();
+        draw();
+      }
+      evt.preventDefault();
+      return;
+    }
+
     // Update translate preview while dragging
     if (translate.active && translate.isTranslating && !isPanning) {
       const ms = getMousePos(evt);
@@ -1387,6 +1643,24 @@
       rotate.previewAngle = 0;
       rotate.isRotating = false;
       updateRotateUi();
+      draw();
+      evt.preventDefault();
+      return;
+    }
+
+    // Commit scaling if scaling
+    if (scale.active && scale.isScaling) {
+      const k = scale.previewFactor || 1;
+      if (Math.abs(k - 1) > 1e-12) {
+        performScaleAroundPoint(scale.pivot, k);
+        scale.fade = { pivot: { ...scale.pivot }, start: performance.now(), duration: 700 };
+      }
+      scale.active = false;
+      scale.pivot = null;
+      scale.startDist = 0;
+      scale.previewFactor = 1;
+      scale.isScaling = false;
+      updateScaleUi();
       draw();
       evt.preventDefault();
       return;
@@ -1723,21 +1997,60 @@
   // Reflect button toggles reflect mode
   if (reflectBtn) {
     reflectBtn.addEventListener('click', () => {
-      if (reflect.active) cancelReflectMode(); else startReflectMode();
+      if (reflect.active) {
+        cancelReflectMode();
+      } else {
+        // deactivate other transform modes
+        if (rotate.active) cancelRotateMode();
+        if (translate.active) cancelTranslateMode();
+        if (scale.active) cancelScaleMode();
+        startReflectMode();
+      }
     });
   }
 
   // Rotate button toggles rotate mode
   if (rotateBtn) {
     rotateBtn.addEventListener('click', () => {
-      if (rotate.active) cancelRotateMode(); else startRotateMode();
+      if (rotate.active) {
+        cancelRotateMode();
+      } else {
+        // deactivate other transform modes
+        if (reflect.active) cancelReflectMode();
+        if (translate.active) cancelTranslateMode();
+        if (scale.active) cancelScaleMode();
+        startRotateMode();
+      }
+    });
+  }
+
+  // Scale button toggles scale mode
+  if (scaleBtn) {
+    scaleBtn.addEventListener('click', () => {
+      if (scale.active) {
+        cancelScaleMode();
+      } else {
+        // deactivate other transform modes
+        if (reflect.active) cancelReflectMode();
+        if (rotate.active) cancelRotateMode();
+        if (translate.active) cancelTranslateMode();
+        startScaleMode();
+      }
     });
   }
 
   // Translate button toggles translate mode
   if (translateBtn) {
     translateBtn.addEventListener('click', () => {
-      if (translate.active) cancelTranslateMode(); else startTranslateMode();
+      if (translate.active) {
+        cancelTranslateMode();
+      } else {
+        // deactivate other transform modes
+        if (reflect.active) cancelReflectMode();
+        if (rotate.active) cancelRotateMode();
+        if (scale.active) cancelScaleMode();
+        startTranslateMode();
+      }
     });
   }
   // Translate numeric apply
@@ -1749,6 +2062,19 @@
         performTranslationByOffset(dx, dy);
       }
       if (translate.active) cancelTranslateMode();
+    });
+  }
+
+  // Scale factor input: update preview when in scale mode with pivot selected
+  if (scaleFactorInput) {
+    scaleFactorInput.addEventListener('input', () => {
+      if (scale.active && scale.pivot) {
+        let k = parseFloat(scaleFactorInput.value);
+        if (!isFinite(k)) k = 1;
+        scale.previewFactor = clamp(k, 0.01, 100);
+        updateScaleUi();
+        draw();
+      }
     });
   }
 
@@ -1894,17 +2220,37 @@
     undoBtn.addEventListener('click', () => undo());
   }
 
+  // Redo button
+  if (redoBtn) {
+    redoBtn.addEventListener('click', () => redo());
+  }
+
+  // Clear selection button
+  if (clearSelectionBtn) {
+    clearSelectionBtn.addEventListener('click', () => {
+      let changed = false;
+      for (const v of vertices) {
+        if (v.selected) { v.selected = false; v.selectedAt = undefined; changed = true; }
+      }
+      for (const im of images) {
+        if (im.selected) { im.selected = false; changed = true; }
+      }
+      if (changed) draw();
+    });
+  }
+
   // Keyboard shortcuts: Space (pan), zoom +/- and Undo (Ctrl/Cmd+Z)
   window.addEventListener('keydown', (e) => {
     const active = document.activeElement;
     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
 
-    // Escape cancels reflect/rotate modes
+    // Escape cancels reflect/rotate/translate/scale modes
     if (e.key === 'Escape') {
       let handled = false;
       if (reflect.active) { cancelReflectMode(); handled = true; }
       if (rotate.active) { cancelRotateMode(); handled = true; }
       if (translate.active) { cancelTranslateMode(); handled = true; }
+      if (scale.active) { cancelScaleMode(); handled = true; }
       if (handled) { e.preventDefault(); return; }
     }
 
@@ -1922,6 +2268,24 @@
           rotate.fade = { pivot: { ...rotate.pivot }, start: performance.now(), duration: 700 };
         }
         cancelRotateMode();
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // Enter applies typed scale factor when in scale mode
+    if (e.key === 'Enter' && scale.active && scale.pivot) {
+      const target = document.activeElement;
+      const isScaleInput = target && (target.id === 'scaleFactor');
+      if (isScaleInput || !isInput) {
+        let k = parseFloat(scaleFactorInput ? scaleFactorInput.value : '1');
+        if (!isFinite(k)) k = 1;
+        k = clamp(k, 0.01, 100);
+        if (Math.abs(k - 1) > 1e-12) {
+          performScaleAroundPoint(scale.pivot, k);
+          scale.fade = { pivot: { ...scale.pivot }, start: performance.now(), duration: 700 };
+        }
+        cancelScaleMode();
         e.preventDefault();
         return;
       }
@@ -1953,11 +2317,25 @@
       return;
     }
 
-    // Undo
+    // Undo / Redo
+    // Ctrl/Cmd+Z = Undo, Ctrl/Cmd+Shift+Z = Redo
     if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
       if (!isInput) {
         e.preventDefault();
-        undo();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      return;
+    }
+
+    // Redo (Ctrl/Cmd+Y)
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+      if (!isInput) {
+        e.preventDefault();
+        redo();
       }
       return;
     }
@@ -2076,8 +2454,10 @@
   draw();
   pushHistory();
   updateUndoButton();
+  updateRedoButton();
   updateReflectUi();
   updateRotateUi();
+  updateScaleUi();
   updateTranslateUi();
 })();
 
