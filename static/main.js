@@ -60,7 +60,7 @@
   const lines = [];    // {aId, bId, color, width}
   // Images model
   let nextImageId = 1;
-  const images = []; // {id, src, x, y, w, h, rot, scale, selected}
+  const images = []; // {id, src, vertexIds: [v0, v1, v2, v3], selected}
   const imageCache = new Map(); // src -> HTMLImageElement (loaded)
   let placeImageMode = null; // { filename }
 
@@ -415,15 +415,16 @@
   }
 
   function performReflectionAcrossLine(A, B) {
-    // Duplicate selected vertices and corresponding lines; keep originals
-    const selected = vertices.filter(v => v.selected);
-    if (selected.length === 0) return;
+    // Duplicate selected vertices and images across line; keep originals
+    const selectedVerts = vertices.filter(v => v.selected);
+    const selectedImages = images.filter(im => im.selected);
+    if (selectedVerts.length === 0 && selectedImages.length === 0) return;
 
     // Map old vertex id -> new vertex id
     const idMap = new Map();
 
     // First, create reflected vertices
-    for (const v of selected) {
+    for (const v of selectedVerts) {
       const rp = reflectPointAcrossLine({ x: v.x, y: v.y }, A, B);
       const sp = snapToGrid(rp);
       const id = nextVertexId++;
@@ -450,6 +451,15 @@
         if (!lineExists(aNew, bNew)) {
           lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
         }
+      }
+    }
+
+    // Duplicate selected images by remapping their four vertex IDs via idMap
+    for (const im of selectedImages) {
+      if (!im.vertexIds || im.vertexIds.length !== 4) continue;
+      const mapped = im.vertexIds.map(oldId => idMap.get(oldId));
+      if (mapped.every(id => typeof id === 'number')) {
+        images.push({ id: nextImageId++, src: im.src, vertexIds: mapped, selected: false });
       }
     }
 
@@ -498,10 +508,11 @@
     return { x: parseFloat((O.x + rx).toFixed(10)), y: parseFloat((O.y + ry).toFixed(10)) };
   }
   function performRotationAroundPoint(O, ang) {
-    const selected = vertices.filter(v => v.selected);
-    if (selected.length === 0) return;
+    const selectedVerts = vertices.filter(v => v.selected);
+    const selectedImages = images.filter(im => im.selected);
+    if (selectedVerts.length === 0 && selectedImages.length === 0) return;
     const idMap = new Map();
-    for (const v of selected) {
+    for (const v of selectedVerts) {
       const rp = rotatePointAround(v, O, ang);
       const sp = snapToGrid(rp);
       const id = nextVertexId++;
@@ -525,6 +536,14 @@
         if (!lineExists(aNew, bNew)) {
           lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
         }
+      }
+    }
+    // Duplicate selected images by remapping their four vertex IDs via idMap
+    for (const im of selectedImages) {
+      if (!im.vertexIds || im.vertexIds.length !== 4) continue;
+      const mapped = im.vertexIds.map(oldId => idMap.get(oldId));
+      if (mapped.every(id => typeof id === 'number')) {
+        images.push({ id: nextImageId++, src: im.src, vertexIds: mapped, selected: false });
       }
     }
     draw();
@@ -632,10 +651,11 @@
 
   // --- Translation helpers and logic ---
   function performTranslationByOffset(dx, dy) {
-    const selected = vertices.filter(v => v.selected);
-    if (selected.length === 0) return;
+    const selectedVerts = vertices.filter(v => v.selected);
+    const selectedImages = images.filter(im => im.selected);
+    if (selectedVerts.length === 0 && selectedImages.length === 0) return;
     const idMap = new Map();
-    for (const v of selected) {
+    for (const v of selectedVerts) {
       const tp = snapToGrid({ x: v.x + dx, y: v.y + dy });
       const id = nextVertexId++;
       const newV = {
@@ -659,6 +679,14 @@
         if (!lineExists(aNew, bNew)) {
           lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
         }
+      }
+    }
+    // Duplicate selected images by translating their four vertex IDs via idMap
+    for (const im of selectedImages) {
+      if (!im.vertexIds || im.vertexIds.length !== 4) continue;
+      const mapped = im.vertexIds.map(oldId => idMap.get(oldId));
+      if (mapped.every(id => typeof id === 'number')) {
+        images.push({ id: nextImageId++, src: im.src, vertexIds: mapped, selected: false });
       }
     }
     draw();
@@ -736,63 +764,182 @@
     return img;
   }
 
+  // Recompute dependent corner (v2) for an image so that v2 = v1 + v3 - v0 (affine/parallelogram constraint)
+  function updateImageDependentCorner(im) {
+    if (!im || !im.vertexIds || im.vertexIds.length !== 4) return;
+    const [id0, id1, id2, id3] = im.vertexIds;
+    const v0 = vertices.find(v => v.id === id0);
+    const v1 = vertices.find(v => v.id === id1);
+    const v2 = vertices.find(v => v.id === id2);
+    const v3 = vertices.find(v => v.id === id3);
+    if (!v0 || !v1 || !v2 || !v3) return;
+    const nx = v1.x + v3.x - v0.x;
+    const ny = v1.y + v3.y - v0.y;
+    if (Math.abs(nx - v2.x) > 1e-12 || Math.abs(ny - v2.y) > 1e-12) {
+      v2.x = parseFloat(nx.toFixed(10));
+      v2.y = parseFloat(ny.toFixed(10));
+    }
+  }
+  function updateAllImagesDependentCorners() {
+    for (const im of images) updateImageDependentCorner(im);
+  }
+
+  function selectImageExclusively(im) {
+    for (const other of images) other.selected = (other === im);
+    // clear all vertex selections
+    for (const v of vertices) { v.selected = false; v.selectedAt = undefined; }
+    if (im && im.vertexIds && im.vertexIds.length === 4) {
+      for (const vid of im.vertexIds) {
+        const v = vertices.find(x => x.id === vid);
+        if (v) { v.selected = true; v.selectedAt = selectionCounter++; }
+      }
+    }
+  }
+  function isDependentCornerId(vid) {
+    for (const im of images) {
+      if (im.vertexIds && im.vertexIds.length === 4 && im.vertexIds[2] === vid) return true;
+    }
+    return false;
+  }
+  function translateImageVertices(im, dx, dy) {
+    if (!im || !im.vertexIds || im.vertexIds.length !== 4) return;
+    const [id0, id1, id2, id3] = im.vertexIds;
+    const v0 = vertices.find(v => v.id === id0);
+    const v1 = vertices.find(v => v.id === id1);
+    const v3 = vertices.find(v => v.id === id3);
+    if (!v0 || !v1 || !v3) return;
+    v0.x = parseFloat((v0.x + dx).toFixed(10));
+    v0.y = parseFloat((v0.y + dy).toFixed(10));
+    v1.x = parseFloat((v1.x + dx).toFixed(10));
+    v1.y = parseFloat((v1.y + dy).toFixed(10));
+    v3.x = parseFloat((v3.x + dx).toFixed(10));
+    v3.y = parseFloat((v3.y + dy).toFixed(10));
+    updateImageDependentCorner(im);
+  }
+  function createImageWithVertices(src, centerWorld) {
+    const id = nextImageId++;
+    const imgEl = getOrLoadImage(src);
+    // default size in world units
+    let wWorld = 6;
+    let hWorld = 6;
+    if (imgEl && imgEl.complete && imgEl.naturalWidth) {
+      const ar = imgEl.naturalWidth / imgEl.naturalHeight;
+      wWorld = 6;
+      hWorld = wWorld / (ar || 1);
+    }
+    const halfW = wWorld / 2;
+    const halfH = hWorld / 2;
+    // Corners in order TL, TR, BR, BL; v2 will be set by dependency as well
+    const pts = [
+      { x: centerWorld.x - halfW, y: centerWorld.y + halfH }, // v0 TL
+      { x: centerWorld.x + halfW, y: centerWorld.y + halfH }, // v1 TR
+      { x: centerWorld.x + halfW, y: centerWorld.y - halfH }, // v2 BR (initial, will be kept dependent)
+      { x: centerWorld.x - halfW, y: centerWorld.y - halfH }, // v3 BL
+    ].map(snapToGrid);
+    const vids = [];
+    for (let i = 0; i < 4; i++) {
+      const vid = nextVertexId++;
+      const vtx = {
+        id: vid,
+        x: pts[i].x,
+        y: pts[i].y,
+        color: vertexColorInput.value,
+        size: clamp(parseFloat(vertexSizeInput.value) || 6, 2, 20),
+        selected: false,
+        selectedAt: undefined,
+        label: defaultLabelForId(vid),
+      };
+      vertices.push(vtx);
+      vids.push(vid);
+    }
+    const im = { id, src, vertexIds: vids, selected: true };
+    images.push(im);
+    // Ensure dependent corner consistency
+    updateImageDependentCorner(im);
+    // If image loads later and aspect ratio known, adjust hWorld by recalculating BL and BR relative to center
+    if (imgEl && !imgEl.complete) {
+      imgEl.onload = () => { draw(); };
+    }
+    // Select the image and its vertices
+    selectImageExclusively(im);
+    return im;
+  }
+
   function drawImages() {
+    // Keep dependent corners in sync with control corners
+    updateAllImagesDependentCorners();
+
+    // Helper: get screen-space corner points from image's 4 vertices (order: v0,v1,v2,v3)
+    function getCornersScreen(im) {
+      if (!im.vertexIds || im.vertexIds.length !== 4) return null;
+      const vs = im.vertexIds.map(id => vertices.find(v => v.id === id));
+      if (vs.some(v => !v)) return null;
+      return vs.map(v => worldToScreen(v));
+    }
+    // Helper: draw the image using an affine transform defined by p0 (TL), p1 (TR), p3 (BL)
+    function drawImageAffine(imgEl, p0, p1, p3, W, H) {
+      const a = (p1.x - p0.x) / W;
+      const b = (p1.y - p0.y) / W;
+      const c = (p3.x - p0.x) / H;
+      const d = (p3.y - p0.y) / H;
+      const e = p0.x;
+      const f = p0.y;
+      ctx.save();
+      ctx.setTransform(a, b, c, d, e, f);
+      ctx.drawImage(imgEl, 0, 0, W, H);
+      ctx.restore();
+    }
+
     for (const im of images) {
       const imgEl = getOrLoadImage(im.src);
-      // If intrinsic ratio not applied yet, adjust h to preserve aspect, keeping width
-      if (imgEl.naturalWidth && imgEl.naturalHeight) {
-        const ratio = imgEl.naturalHeight / imgEl.naturalWidth;
-        if (!im._intrinsicApplied) {
-          im.h = im.h != null ? im.h : (im.w != null ? im.w * ratio : 6 * ratio);
-          im.w = im.w != null ? im.w : 6;
-          im._intrinsicApplied = true;
-        }
-      } else {
-        // defaults
-        if (im.w == null) im.w = 6;
-        if (im.h == null) im.h = 6;
+      if (!imgEl.complete || !imgEl.naturalWidth) {
+        if (imgEl) imgEl.onload = () => draw();
+        continue;
       }
-      const s = pixelsPerUnit * (im.scale || 1);
-      const center = worldToScreen({ x: im.x, y: im.y });
-      const wpx = (im.w || 6) * s;
-      const hpx = (im.h || 6) * s;
-      ctx.save();
-      ctx.translate(center.x, center.y);
-      ctx.rotate(-(im.rot || 0));
-      ctx.globalAlpha = 1.0;
-      if (imgEl.complete && imgEl.naturalWidth) {
-        ctx.drawImage(imgEl, -wpx / 2, -hpx / 2, wpx, hpx);
-      } else {
-        // placeholder
-        ctx.fillStyle = '#eee';
-        ctx.fillRect(-wpx/2, -hpx/2, wpx, hpx);
-        ctx.strokeStyle = '#ccc';
-        ctx.strokeRect(-wpx/2, -hpx/2, wpx, hpx);
-        imgEl.onload = () => { draw(); };
-      }
-      // selection outline
+      const corners = getCornersScreen(im);
+      if (!corners) continue;
+      const [p0, p1, p2, p3] = corners; // vertices order is TL,TR,BR,BL
+      drawImageAffine(imgEl, p0, p1, p3, imgEl.naturalWidth, imgEl.naturalHeight);
+
+      // Selection outline
       if (im.selected) {
-        ctx.lineWidth = 2;
+        ctx.save();
+        // Outer dark stroke for contrast
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.closePath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.stroke();
+        // Inner bright stroke
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = '#ffd600';
-        ctx.strokeRect(-wpx/2, -hpx/2, wpx, hpx);
+        ctx.stroke();
+        ctx.restore();
       }
-      ctx.restore();
     }
   }
 
   function imageContainsPoint(im, ms) {
-    const s = pixelsPerUnit * (im.scale || 1);
-    const center = worldToScreen({ x: im.x, y: im.y });
-    const dx = ms.x - center.x;
-    const dy = ms.y - center.y;
-    const ang = im.rot || 0;
-    // rotate screen delta by +ang to align with image axes (inverse of drawing rotation)
-    const c = Math.cos(ang), sgn = Math.sin(ang);
-    const lx = dx * c - dy * sgn;
-    const ly = dx * sgn + dy * c;
-    const wpx = (im.w || 6) * s;
-    const hpx = (im.h || 6) * s;
-    return Math.abs(lx) <= wpx/2 && Math.abs(ly) <= hpx/2;
+    if (!im.vertexIds || im.vertexIds.length !== 4) return false;
+    const vs = im.vertexIds.map(id => vertices.find(v => v.id === id));
+    if (vs.some(v => !v)) return false;
+    const quad = vs.map(v => worldToScreen(v));
+    function cross(a, b, c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = quad[i], b = quad[(i + 1) % 4];
+      const cr = cross(a, b, ms);
+      if (cr !== 0) {
+        const s = Math.sign(cr);
+        if (sign === 0) sign = s;
+        else if (s !== sign) return false;
+      }
+    }
+    return true;
   }
 
   function hitTestImage(ms) {
@@ -932,7 +1079,9 @@
   // Image dragging state
   let isDraggingImage = false;
   let dragImage = null;
-  let dragImageOffsetWorld = { x: 0, y: 0 };
+  // For vertex-bound images: track start mouse world and starting positions of control vertices (v0,v1,v3)
+  let imageDragStartWorld = null; // {x,y}
+  let imageDragStartVertices = null; // Map vertexId -> {x,y}
   let imageDragMoved = false;
 
   // Rectangle selection (click-drag selection box)
@@ -1008,6 +1157,8 @@
 
     const hit = hitTestVertex(ms);
     if (hit) {
+      // Prevent dragging the dependent corner (BR) of any image; it is computed from other three
+      if (isDependentCornerId(hit.id)) { evt.preventDefault(); return; }
       isDragging = true;
       dragVertex = hit;
       const mw = screenToWorld(ms);
@@ -1034,10 +1185,24 @@
         isDraggingImage = true;
         dragImage = hitIm;
         const mw = screenToWorld(ms);
-        dragImageOffsetWorld = { x: hitIm.x - mw.x, y: hitIm.y - mw.y };
+        imageDragStartWorld = snapToGrid(mw);
+        imageDragStartVertices = new Map();
+        if (hitIm.vertexIds && hitIm.vertexIds.length === 4) {
+          const [v0Id, v1Id, , v3Id] = hitIm.vertexIds;
+          for (const vid of [v0Id, v1Id, v3Id]) {
+            const v = vertices.find(x => x.id === vid);
+            if (v) imageDragStartVertices.set(vid, { x: v.x, y: v.y });
+          }
+        }
+        // Also include any additional vertices attached to this image via imageId, so they translate together
+        for (const v of vertices) {
+          if (v.imageId === hitIm.id && !imageDragStartVertices.has(v.id)) {
+            imageDragStartVertices.set(v.id, { x: v.x, y: v.y });
+          }
+        }
         imageDragMoved = false;
-        // select this image exclusively
-        for (const im of images) im.selected = (im === hitIm);
+        // select this image and its vertices exclusively
+        selectImageExclusively(hitIm);
         draw();
         evt.preventDefault();
         return;
@@ -1114,19 +1279,31 @@
       return;
     }
 
-    // Image dragging handling
+    // Image dragging handling (translate bound vertices)
     if (isDraggingImage && dragImage) {
       const ms = getMousePos(evt);
       const mw = screenToWorld(ms);
-      const target = { x: mw.x + dragImageOffsetWorld.x, y: mw.y + dragImageOffsetWorld.y };
-      const snapped = snapToGrid(target);
-      if (snapped.x !== dragImage.x || snapped.y !== dragImage.y) {
-        dragImage.x = snapped.x;
-        dragImage.y = snapped.y;
-        imageDragMoved = true;
-        // Update any vertices attached to this image
-        updateAttachedVerticesForImage(dragImage);
-        draw();
+      const curr = snapToGrid(mw);
+      if (imageDragStartWorld && imageDragStartVertices && imageDragStartVertices.size > 0) {
+        const dx = curr.x - imageDragStartWorld.x;
+        const dy = curr.y - imageDragStartWorld.y;
+        // Apply translation to all recorded vertices from their start positions
+        let anyChanged = false;
+        for (const [vid, start] of imageDragStartVertices.entries()) {
+          const v = vertices.find(x => x.id === vid);
+          if (start && v) {
+            const nx = parseFloat((start.x + dx).toFixed(10));
+            const ny = parseFloat((start.y + dy).toFixed(10));
+            if (nx !== v.x || ny !== v.y) {
+              v.x = nx; v.y = ny; anyChanged = true;
+            }
+          }
+        }
+        if (anyChanged) {
+          updateImageDependentCorner(dragImage);
+          imageDragMoved = true;
+          draw();
+        }
       }
       evt.preventDefault();
       return;
@@ -1150,6 +1327,13 @@
       }
       evt.preventDefault();
       return;
+    }
+
+    // Hover feedback over images when idle
+    if (!isPanning && !reflect.active && !rotate.active && !translate.active) {
+      const msHover = getMousePos(evt);
+      const hitImHover = hitTestImage(msHover);
+      canvas.style.cursor = hitImHover ? 'move' : '';
     }
 
     if (!isDragging || !dragVertex) return;
@@ -1212,6 +1396,8 @@
     if (isDraggingImage && dragImage) {
       isDraggingImage = false;
       dragImage = null;
+      imageDragStartWorld = null;
+      imageDragStartVertices = null;
       if (imageDragMoved) {
         pushHistory();
         suppressNextClick = true;
@@ -1359,12 +1545,7 @@
       const ms = getMousePos(evt);
       const mw = screenToWorld(ms);
       const ws = snapToGrid(mw);
-      const id = nextImageId++;
-      const im = { id, src: placeImageMode.filename, x: ws.x, y: ws.y, w: 6, h: null, rot: 0, scale: 1, selected: true };
-      images.push(im);
-      // Kick image load and redraw when ready
-      const el = getOrLoadImage(im.src);
-      if (el && !el.complete) { el.onload = () => draw(); }
+      createImageWithVertices(placeImageMode.filename, ws);
       placeImageMode = null;
       draw();
       pushHistory();
@@ -1899,3 +2080,4 @@
   updateRotateUi();
   updateTranslateUi();
 })();
+
