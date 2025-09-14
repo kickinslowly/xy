@@ -7,68 +7,104 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <div class="toolbar">
-    <div class="group">
-      <button id="zoomOut" title="Zoom out (-)">−</button>
-      <button id="zoomIn" title="Zoom in (+)">+</button>
-      <label>
-        Pixels per unit:
-        <input id="ppu" type="number" min="5" max="400" step="1" value="50" />
-      </label>
-      <label>
-        Grid step (units):
-        <select id="gridStep">
-          <option value="0.5">0.5</option>
-          <option value="1" selected>1</option>
-          <option value="2">2</option>
-          <option value="5">5</option>
-          <option value="10">10</option>
-        </select>
-      </label>
-    </div>
+  <header class="app-header" role="banner">
+    <nav class="toolbar panels" aria-label="Canvas controls">
+      <details class="panel" open>
+        <summary>View</summary>
+        <div class="group" role="group" aria-label="View controls">
+          <button id="zoomOut" type="button" title="Zoom out (-)" aria-label="Zoom out">−</button>
+          <button id="zoomIn" type="button" title="Zoom in (+)" aria-label="Zoom in">+</button>
+          <label for="ppu">
+            Pixels per unit:
+          </label>
+          <input id="ppu" type="number" min="5" max="400" step="1" value="50" aria-label="Pixels per unit" />
+          <label for="gridStep">Grid step (units):</label>
+          <select id="gridStep" aria-label="Grid step">
+            <option value="0.5">0.5</option>
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+          </select>
+        </div>
+      </details>
 
-    <div class="group">
-      <label>
-        Vertex color:
-        <input id="vertexColor" type="color" value="#d81b60" />
-      </label>
-      <label>
-        Vertex size:
-        <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" />
-      </label>
-      <button id="clearVertices">Clear vertices</button>
-    </div>
+      <details class="panel" open>
+        <summary>Vertices</summary>
+        <div class="group" role="group" aria-label="Vertex settings">
+          <label for="vertexColor">Vertex color:</label>
+          <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" />
+          <label for="vertexSize">Vertex size:</label>
+          <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" aria-label="Vertex size" />
+          <button id="deleteSelected" type="button">Delete selected</button>
+          <button id="clearVertices" type="button">Clear vertices</button>
+        </div>
+      </details>
 
-    <div class="group">
-      <label>
-        Line color:
-        <input id="lineColor" type="color" value="#1e88e5" />
-      </label>
-      <label>
-        Line thickness:
-        <input id="lineWidth" type="number" min="1" max="20" step="1" value="2" />
-      </label>
-      <button id="connectSelected">Connect selected</button>
-      <label style="display:inline-flex; gap:.5rem; align-items:center;">
-        <input id="closeLoop" type="checkbox" />
-        Close loop
-      </label>
-      <button id="clearLines">Clear lines</button>
-    </div>
+      <details class="panel" open>
+        <summary>Lines</summary>
+        <div class="group" role="group" aria-label="Line settings">
+          <label for="lineColor">Line color:</label>
+          <input id="lineColor" type="color" value="#1e88e5" aria-label="Line color" />
+          <label for="lineWidth">Line thickness:</label>
+          <input id="lineWidth" type="number" min="1" max="20" step="1" value="2" aria-label="Line thickness" />
+          <button id="connectSelected" type="button">Connect selected</button>
+          <label for="closeLoop" style="display:inline-flex; gap:.5rem; align-items:center;">
+            <input id="closeLoop" type="checkbox" />
+            Close loop
+          </label>
+          <button id="clearLines" type="button">Clear lines</button>
+        </div>
+      </details>
 
-    <div class="group">
-      <button id="reflectBtn" title="Reflect selected vertices across a line">Reflect</button>
-      <span id="modeHint" class="hint" style="display:none;">Click two points to define a reflection line. Press Esc to cancel.</span>
-    </div>
+      <details class="panel" open>
+        <summary>Images</summary>
+        <div class="group" role="group" aria-label="Image tools">
+          <button id="addImageBtn" type="button" title="Add an image to the plane">Add image</button>
+          <button id="clearImages" type="button" title="Remove all images">Clear images</button>
+        </div>
+      </details>
 
-    <div class="group">
-      <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
-      <button id="clearAll">Clear all</button>
-      <span class="hint">Tip: Click to add vertices. Click a vertex to select/deselect. Use mouse wheel or +/- to zoom. </span>
-    </div>
-  </div>
+      <details class="panel">
+        <summary>Transform</summary>
+        <div class="group" role="group" aria-label="Reflect">
+          <button id="reflectBtn" type="button" title="Reflect selected vertices across a line">Reflect</button>
+          <span id="modeHint" class="hint" style="display:none;">Click two points to define a reflection line. Press Esc to cancel.</span>
+        </div>
+        <div class="group" role="group" aria-label="Rotate">
+          <button id="rotateBtn" type="button" title="Rotate selected vertices around a point">Rotate</button>
+          <label for="rotateAngle">Angle (deg):</label>
+          <input id="rotateAngle" type="number" step="0.1" value="0" aria-label="Rotation angle in degrees" />
+          <label for="rotateDir">Direction:</label>
+          <select id="rotateDir" aria-label="Rotation direction">
+            <option value="ccw" selected>CCW (+)</option>
+            <option value="cw">CW (−)</option>
+          </select>
+          <span id="rotateHint" class="hint" style="display:none;">Click to choose rotation center, then drag to rotate. Or type an angle and press Enter. Esc to cancel.</span>
+        </div>
+        <div class="group" role="group" aria-label="Translate">
+          <button id="translateBtn" type="button" title="Translate selected vertices by a vector">Translate</button>
+          <label for="translateDx">dx:</label>
+          <input id="translateDx" type="number" step="0.1" value="0" aria-label="Translate dx" />
+          <label for="translateDy">dy:</label>
+          <input id="translateDy" type="number" step="0.1" value="0" aria-label="Translate dy" />
+          <button id="translateApply" type="button" title="Apply numeric translation">Apply</button>
+          <span id="translateHint" class="hint" style="display:none;">Click and drag to set translation vector, or type dx, dy and press Apply. Esc to cancel.</span>
+        </div>
+      </details>
 
-  <div class="main-wrap">
+      <details class="panel">
+        <summary>History</summary>
+        <div class="group" role="group" aria-label="History actions">
+          <button id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
+          <button id="clearAll" type="button">Clear all</button>
+          <span class="hint">Tip: Click to add vertices. Click a vertex to select/deselect. Use mouse wheel or +/- to zoom. </span>
+        </div>
+      </details>
+    </nav>
+  </header>
+
+  <main class="main-wrap" role="main">
     <div class="canvas-wrap">
       <canvas id="plane" width="1000" height="650" aria-label="Interactive coordinate plane" role="img"></canvas>
     </div>
@@ -79,6 +115,28 @@
       </div>
       <ul id="vertexList" class="vertex-list" aria-live="polite"></ul>
     </aside>
+  </main>
+
+  <!-- Image gallery modal -->
+  <div id="imageModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Choose an image">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Choose an image</h3>
+        <button id="closeImageModal" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="gallery">
+        {% if available_images %}
+          {% for img in available_images %}
+            <button class="gallery-item" type="button" title="{{ img }}" data-filename="{{ img }}">
+              <img src="{{ url_for('static', filename=img) }}" alt="{{ img }}" />
+            </button>
+          {% endfor %}
+        {% else %}
+          <p class="hint" style="padding:8px 12px;">No images found in the static folder.</p>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <script src="{{ url_for('static', filename='main.js') }}"></script>

@@ -11,6 +11,7 @@
   const vertexColorInput = document.getElementById('vertexColor');
   const vertexSizeInput = document.getElementById('vertexSize');
   const clearVerticesBtn = document.getElementById('clearVertices');
+  const deleteSelectedBtn = document.getElementById('deleteSelected');
 
   const lineColorInput = document.getElementById('lineColor');
   const lineWidthInput = document.getElementById('lineWidth');
@@ -26,6 +27,25 @@
   const reflectBtn = document.getElementById('reflectBtn');
   const modeHint = document.getElementById('modeHint');
 
+  // Rotation UI elements
+  const rotateBtn = document.getElementById('rotateBtn');
+  const rotateAngleInput = document.getElementById('rotateAngle');
+  const rotateDirSelect = document.getElementById('rotateDir');
+  const rotateHint = document.getElementById('rotateHint');
+
+  // Translation UI elements
+  const translateBtn = document.getElementById('translateBtn');
+  const translateDxInput = document.getElementById('translateDx');
+  const translateDyInput = document.getElementById('translateDy');
+  const translateApplyBtn = document.getElementById('translateApply');
+  const translateHint = document.getElementById('translateHint');
+
+  // Image UI elements
+  const addImageBtn = document.getElementById('addImageBtn');
+  const clearImagesBtn = document.getElementById('clearImages');
+  const imageModal = document.getElementById('imageModal');
+  const closeImageModalBtn = document.getElementById('closeImageModal');
+
   // Coordinate system state
   let pixelsPerUnit = clamp(parseFloat(ppuInput.value) || 50, 5, 400);
   let gridStepUnits = parseFloat(gridStepSelect.value) || 1; // grid line spacing in world units
@@ -36,8 +56,13 @@
   // Data models
   let nextVertexId = 1;
   let selectionCounter = 1; // for ordering selected vertices
-  const vertices = []; // {id, x, y, color, size, selected, selectedAt}
+  const vertices = []; // {id, x, y, color, size, selected, selectedAt, label, imageId?, localX?, localY?}
   const lines = [];    // {aId, bId, color, width}
+  // Images model
+  let nextImageId = 1;
+  const images = []; // {id, src, x, y, w, h, rot, scale, selected}
+  const imageCache = new Map(); // src -> HTMLImageElement (loaded)
+  let placeImageMode = null; // { filename }
 
   // Reflection state and animation
   const reflect = {
@@ -47,23 +72,47 @@
     fade: null     // {a:{x,y}, b:{x,y}, start:number, duration:number}
   };
 
+  // Rotation state and animation
+  const rotate = {
+    active: false,
+    pivot: null,        // {x,y} rotation center in world coords
+    startVec: null,     // vector from pivot to initial mouse position when starting drag
+    previewAngle: 0,    // radians; positive is CCW
+    isRotating: false,
+    fade: null          // {pivot:{x,y}, from:number, to:number, start:number, duration:number}
+  };
+
+  // Translation state and animation
+  const translate = {
+    active: false,
+    start: null,            // {x,y} start point in world coords
+    previewOffset: { x: 0, y: 0 },
+    isTranslating: false,
+    fade: null              // {from:{x,y}, to:{x,y}, start:number, duration:number}
+  };
+
   // History (undo) stack
   const history = [];
   function makeSnapshot() {
     return {
       vertices: vertices.map(v => ({...v})),
       lines: lines.map(l => ({...l})),
+      images: images.map(im => ({...im})),
       nextVertexId,
+      nextImageId,
       selectionCounter
     };
   }
   function restoreFromSnapshot(snap) {
     vertices.length = 0;
-    for (const v of snap.vertices) vertices.push({...v});
+    for (const v of (snap.vertices || [])) vertices.push({...v});
     lines.length = 0;
-    for (const l of snap.lines) lines.push({...l});
-    nextVertexId = snap.nextVertexId;
-    selectionCounter = snap.selectionCounter;
+    for (const l of (snap.lines || [])) lines.push({...l});
+    images.length = 0;
+    for (const im of (snap.images || [])) images.push({...im});
+    nextVertexId = snap.nextVertexId || 1;
+    nextImageId = snap.nextImageId || 1;
+    selectionCounter = snap.selectionCounter || 1;
   }
   function canUndo() { return history.length > 1; }
   function updateUndoButton() { if (undoBtn) undoBtn.disabled = !canUndo(); }
@@ -376,11 +425,12 @@
     // First, create reflected vertices
     for (const v of selected) {
       const rp = reflectPointAcrossLine({ x: v.x, y: v.y }, A, B);
+      const sp = snapToGrid(rp);
       const id = nextVertexId++;
       const newV = {
         id,
-        x: parseFloat(rp.x.toFixed(10)),
-        y: parseFloat(rp.y.toFixed(10)),
+        x: sp.x,
+        y: sp.y,
         color: v.color,
         size: v.size,
         selected: false,
@@ -435,12 +485,384 @@
     draw();
   }
 
+  // --- Rotation helpers and logic ---
+  function rotVec(v, ang) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+  }
+  function rotatePointAround(P, O, ang) {
+    const vx = P.x - O.x, vy = P.y - O.y;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const rx = vx * c - vy * s;
+    const ry = vx * s + vy * c;
+    return { x: parseFloat((O.x + rx).toFixed(10)), y: parseFloat((O.y + ry).toFixed(10)) };
+  }
+  function performRotationAroundPoint(O, ang) {
+    const selected = vertices.filter(v => v.selected);
+    if (selected.length === 0) return;
+    const idMap = new Map();
+    for (const v of selected) {
+      const rp = rotatePointAround(v, O, ang);
+      const sp = snapToGrid(rp);
+      const id = nextVertexId++;
+      const newV = {
+        id,
+        x: sp.x,
+        y: sp.y,
+        color: v.color,
+        size: v.size,
+        selected: false,
+        selectedAt: undefined,
+        label: defaultLabelForId(id),
+      };
+      vertices.push(newV);
+      idMap.set(v.id, id);
+    }
+    for (const ln of lines.slice()) {
+      if (idMap.has(ln.aId) && idMap.has(ln.bId)) {
+        const aNew = idMap.get(ln.aId);
+        const bNew = idMap.get(ln.bId);
+        if (!lineExists(aNew, bNew)) {
+          lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
+        }
+      }
+    }
+    draw();
+    pushHistory();
+  }
+
+  function drawRotationOverlay() {
+    // Active rotation preview
+    if (rotate.active && rotate.pivot) {
+      // draw pivot marker (crosshair)
+      const ps = worldToScreen(rotate.pivot);
+      ctx.save();
+      ctx.strokeStyle = '#6a1b9a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ps.x - 6, ps.y);
+      ctx.lineTo(ps.x + 6, ps.y);
+      ctx.moveTo(ps.x, ps.y - 6);
+      ctx.lineTo(ps.x, ps.y + 6);
+      ctx.stroke();
+      ctx.restore();
+
+      if (rotate.startVec) {
+        const v0 = rotate.startVec;
+        const v1 = rotVec(v0, rotate.previewAngle);
+        const a = { x: rotate.pivot.x + v0.x, y: rotate.pivot.y + v0.y };
+        const b = { x: rotate.pivot.x + v1.x, y: rotate.pivot.y + v1.y };
+        // base ray (dashed)
+        drawStyledWorldLine(rotate.pivot, a, '#6a1b9a', 2, [6,4], 0.75);
+        // rotated ray (solid)
+        drawStyledWorldLine(rotate.pivot, b, '#6a1b9a', 3, null, 0.95);
+        // angle label near pivot
+        const deg = (Math.abs(rotate.previewAngle) * 180 / Math.PI).toFixed(1);
+        const label = `${deg}° ${rotate.previewAngle >= 0 ? 'CCW' : 'CW'}`;
+        ctx.save();
+        ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#311b92';
+        ctx.fillText(label, ps.x + 8, ps.y + 8);
+        ctx.restore();
+      }
+    }
+
+    // Simple fade placeholder (optional)
+    if (rotate.fade) {
+      const { pivot, start, duration } = rotate.fade;
+      const now = performance.now();
+      const t = Math.min(1, (now - start) / duration);
+      const alpha = 1 - t;
+      if (alpha > 0) {
+        const ps = worldToScreen(pivot);
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.strokeStyle = '#6a1b9a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        requestAnimationFrame(() => draw());
+      } else {
+        rotate.fade = null;
+      }
+    }
+  }
+
+  function updateRotateUi() {
+    if (rotateBtn) {
+      if (rotate.active) {
+        rotateBtn.classList.add('active');
+        rotateBtn.textContent = 'Cancel rotate';
+      } else {
+        rotateBtn.classList.remove('active');
+        rotateBtn.textContent = 'Rotate';
+      }
+    }
+    if (rotateHint) rotateHint.style.display = rotate.active ? '' : 'none';
+    // angle input reflects current preview if present
+    if (rotateAngleInput && rotateDirSelect) {
+      const deg = Math.abs(rotate.previewAngle || 0) * 180 / Math.PI;
+      if (!isNaN(deg)) rotateAngleInput.value = (Math.round(deg * 10) / 10).toString();
+      rotateDirSelect.value = (rotate.previewAngle || 0) >= 0 ? 'ccw' : 'cw';
+    }
+  }
+
+  function startRotateMode() {
+    rotate.active = true;
+    rotate.pivot = null;
+    rotate.startVec = null;
+    rotate.previewAngle = 0;
+    rotate.isRotating = false;
+    updateRotateUi();
+    draw();
+  }
+  function cancelRotateMode() {
+    rotate.active = false;
+    rotate.pivot = null;
+    rotate.startVec = null;
+    rotate.previewAngle = 0;
+    rotate.isRotating = false;
+    updateRotateUi();
+    draw();
+  }
+
+  // --- Translation helpers and logic ---
+  function performTranslationByOffset(dx, dy) {
+    const selected = vertices.filter(v => v.selected);
+    if (selected.length === 0) return;
+    const idMap = new Map();
+    for (const v of selected) {
+      const tp = snapToGrid({ x: v.x + dx, y: v.y + dy });
+      const id = nextVertexId++;
+      const newV = {
+        id,
+        x: tp.x,
+        y: tp.y,
+        color: v.color,
+        size: v.size,
+        selected: false,
+        selectedAt: undefined,
+        label: defaultLabelForId(id),
+      };
+      vertices.push(newV);
+      idMap.set(v.id, id);
+    }
+    // Duplicate connecting lines where both endpoints were selected
+    for (const ln of lines.slice()) {
+      if (idMap.has(ln.aId) && idMap.has(ln.bId)) {
+        const aNew = idMap.get(ln.aId);
+        const bNew = idMap.get(ln.bId);
+        if (!lineExists(aNew, bNew)) {
+          lines.push({ aId: aNew, bId: bNew, color: ln.color, width: ln.width });
+        }
+      }
+    }
+    draw();
+    pushHistory();
+  }
+
+  function drawTranslationOverlay() {
+    // Active drag preview
+    if (translate.active && translate.isTranslating && translate.start) {
+      const a = translate.start;
+      const b = { x: a.x + (translate.previewOffset.x || 0), y: a.y + (translate.previewOffset.y || 0) };
+      drawStyledWorldLine(a, b, '#f57c00', 3, null, 0.95);
+      const ps = worldToScreen(b);
+      ctx.save();
+      ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#e65100';
+      const dx = formatNumber(translate.previewOffset.x || 0);
+      const dy = formatNumber(translate.previewOffset.y || 0);
+      ctx.fillText(`dx=${dx}, dy=${dy}`, ps.x + 6, ps.y + 6);
+      ctx.restore();
+    }
+    // Fade after commit
+    if (translate.fade) {
+      const { from, to, start, duration } = translate.fade;
+      const now = performance.now();
+      const t = Math.min(1, (now - start) / duration);
+      const alpha = 1 - t;
+      if (alpha > 0) {
+        drawStyledWorldLine(from, to, '#f57c00', 3, [6,4], alpha);
+        requestAnimationFrame(() => draw());
+      } else {
+        translate.fade = null;
+      }
+    }
+  }
+
+  function updateTranslateUi() {
+    if (translateBtn) {
+      if (translate.active) {
+        translateBtn.classList.add('active');
+        translateBtn.textContent = 'Cancel translate';
+      } else {
+        translateBtn.classList.remove('active');
+        translateBtn.textContent = 'Translate';
+      }
+    }
+    if (translateHint) translateHint.style.display = translate.active ? '' : 'none';
+  }
+
+  function startTranslateMode() {
+    translate.active = true;
+    translate.start = null;
+    translate.previewOffset = { x: 0, y: 0 };
+    translate.isTranslating = false;
+    updateTranslateUi();
+    draw();
+  }
+  function cancelTranslateMode() {
+    translate.active = false;
+    translate.start = null;
+    translate.previewOffset = { x: 0, y: 0 };
+    translate.isTranslating = false;
+    updateTranslateUi();
+    draw();
+  }
+
+  // --- Image helpers and rendering ---
+  function getOrLoadImage(src) {
+    if (imageCache.has(src)) return imageCache.get(src);
+    const img = new Image();
+    img.src = (src.startsWith('http') || src.startsWith('/')) ? src : (document.baseURI.replace(/\/$/, '') + '/static/' + src);
+    imageCache.set(src, img);
+    return img;
+  }
+
+  function drawImages() {
+    for (const im of images) {
+      const imgEl = getOrLoadImage(im.src);
+      // If intrinsic ratio not applied yet, adjust h to preserve aspect, keeping width
+      if (imgEl.naturalWidth && imgEl.naturalHeight) {
+        const ratio = imgEl.naturalHeight / imgEl.naturalWidth;
+        if (!im._intrinsicApplied) {
+          im.h = im.h != null ? im.h : (im.w != null ? im.w * ratio : 6 * ratio);
+          im.w = im.w != null ? im.w : 6;
+          im._intrinsicApplied = true;
+        }
+      } else {
+        // defaults
+        if (im.w == null) im.w = 6;
+        if (im.h == null) im.h = 6;
+      }
+      const s = pixelsPerUnit * (im.scale || 1);
+      const center = worldToScreen({ x: im.x, y: im.y });
+      const wpx = (im.w || 6) * s;
+      const hpx = (im.h || 6) * s;
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.rotate(-(im.rot || 0));
+      ctx.globalAlpha = 1.0;
+      if (imgEl.complete && imgEl.naturalWidth) {
+        ctx.drawImage(imgEl, -wpx / 2, -hpx / 2, wpx, hpx);
+      } else {
+        // placeholder
+        ctx.fillStyle = '#eee';
+        ctx.fillRect(-wpx/2, -hpx/2, wpx, hpx);
+        ctx.strokeStyle = '#ccc';
+        ctx.strokeRect(-wpx/2, -hpx/2, wpx, hpx);
+        imgEl.onload = () => { draw(); };
+      }
+      // selection outline
+      if (im.selected) {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffd600';
+        ctx.strokeRect(-wpx/2, -hpx/2, wpx, hpx);
+      }
+      ctx.restore();
+    }
+  }
+
+  function imageContainsPoint(im, ms) {
+    const s = pixelsPerUnit * (im.scale || 1);
+    const center = worldToScreen({ x: im.x, y: im.y });
+    const dx = ms.x - center.x;
+    const dy = ms.y - center.y;
+    const ang = im.rot || 0;
+    // rotate screen delta by +ang to align with image axes (inverse of drawing rotation)
+    const c = Math.cos(ang), sgn = Math.sin(ang);
+    const lx = dx * c - dy * sgn;
+    const ly = dx * sgn + dy * c;
+    const wpx = (im.w || 6) * s;
+    const hpx = (im.h || 6) * s;
+    return Math.abs(lx) <= wpx/2 && Math.abs(ly) <= hpx/2;
+  }
+
+  function hitTestImage(ms) {
+    // topmost first: last drawn is last in array, so iterate from end
+    for (let i = images.length - 1; i >= 0; i--) {
+      const im = images[i];
+      if (imageContainsPoint(im, ms)) return im;
+    }
+    return null;
+  }
+
+  function getImageScreenAABB(im) {
+    const s = pixelsPerUnit * (im.scale || 1);
+    const wpx = (im.w || 6) * s;
+    const hpx = (im.h || 6) * s;
+    const center = worldToScreen({ x: im.x, y: im.y });
+    const ang = im.rot || 0;
+    const corners = [
+      { x: -wpx/2, y: -hpx/2 },
+      { x:  wpx/2, y: -hpx/2 },
+      { x:  wpx/2, y:  hpx/2 },
+      { x: -wpx/2, y:  hpx/2 },
+    ].map(p => ({ x: center.x + p.x * Math.cos(-ang) - p.y * Math.sin(-ang), y: center.y + p.x * Math.sin(-ang) + p.y * Math.cos(-ang) }));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of corners) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  function attachVertexToImage(v, im, worldPoint) {
+    // compute local (pre-scale) coords
+    const dx = worldPoint.x - im.x;
+    const dy = worldPoint.y - im.y;
+    const ang = im.rot || 0;
+    const c = Math.cos(-ang), s = Math.sin(-ang);
+    const lx = (dx * c - dy * s) / (im.scale || 1);
+    const ly = (dx * s + dy * c) / (im.scale || 1);
+    v.imageId = im.id;
+    v.localX = parseFloat(lx.toFixed(10));
+    v.localY = parseFloat(ly.toFixed(10));
+  }
+
+  function updateAttachedVerticesForImage(im) {
+    const ang = im.rot || 0;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const scale = im.scale || 1;
+    for (const v of vertices) {
+      if (v.imageId === im.id && typeof v.localX === 'number' && typeof v.localY === 'number') {
+        const lx = v.localX * scale;
+        const ly = v.localY * scale;
+        const wx = im.x + (lx * c - ly * s);
+        const wy = im.y + (lx * s + ly * c);
+        v.x = parseFloat(wx.toFixed(10));
+        v.y = parseFloat(wy.toFixed(10));
+      }
+    }
+  }
+
   function draw() {
     clear();
     drawGrid();
+    drawImages();
     drawLines();
     drawVertices();
     drawReflectionOverlay();
+    drawRotationOverlay();
+    drawTranslationOverlay();
+    drawSelectionRectOverlay();
     updateSidebar();
   }
 
@@ -507,6 +929,21 @@
   let groupDragStartPositions = null; // Map of vertexId -> {x,y}
   let dragStartPos = null; // starting position of the dragged vertex
 
+  // Image dragging state
+  let isDraggingImage = false;
+  let dragImage = null;
+  let dragImageOffsetWorld = { x: 0, y: 0 };
+  let imageDragMoved = false;
+
+  // Rectangle selection (click-drag selection box)
+  const RECT_ACTIVATE_DIST = 3; // pixels
+  let rectSelectPending = false; // waiting for small movement to start selection box
+  let isRectSelecting = false;
+  let rectStart = null;    // screen coords {x,y}
+  let rectCurrent = null;  // screen coords {x,y}
+  let rectMode = 'replace'; // 'replace' | 'add' | 'toggle'
+  let rectMoved = false;
+
   // Pan mode (hold Space to pan)
   let isPanning = false;
   let isSpacePan = false;
@@ -528,8 +965,46 @@
       return;
     }
 
-    // In reflect mode, prevent starting a drag
+    // Reflect mode handled via click listener; disable vertex drag while active
     if (reflect.active) { evt.preventDefault(); return; }
+
+    // Rotate mode: first click picks pivot; second drag sets angle
+    if (rotate.active) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const pt = snapToGrid(mw);
+      if (!rotate.pivot) {
+        rotate.pivot = pt;
+        rotate.startVec = null;
+        rotate.previewAngle = 0;
+        updateRotateUi();
+        draw();
+        suppressNextClick = true;
+      } else {
+        const vec = { x: pt.x - rotate.pivot.x, y: pt.y - rotate.pivot.y };
+        const len2 = vec.x * vec.x + vec.y * vec.y;
+        if (len2 >= 1e-12) {
+          rotate.startVec = vec;
+          rotate.previewAngle = 0;
+          rotate.isRotating = true;
+          suppressNextClick = true;
+        }
+      }
+      evt.preventDefault();
+      return;
+    }
+
+    // Translate mode: start translation drag from current mouse world pos
+    if (translate.active) {
+      const mw = screenToWorld(ms);
+      const pt = snapToGrid(mw);
+      translate.start = pt;
+      translate.previewOffset = { x: 0, y: 0 };
+      translate.isTranslating = true;
+      suppressNextClick = true;
+      evt.preventDefault();
+      return;
+    }
 
     const hit = hitTestVertex(ms);
     if (hit) {
@@ -552,6 +1027,29 @@
       }
       dragMoved = false;
       evt.preventDefault();
+    } else {
+      // If clicked over an image, start dragging that image instead of starting selection
+      const hitIm = hitTestImage(ms);
+      if (hitIm) {
+        isDraggingImage = true;
+        dragImage = hitIm;
+        const mw = screenToWorld(ms);
+        dragImageOffsetWorld = { x: hitIm.x - mw.x, y: hitIm.y - mw.y };
+        imageDragMoved = false;
+        // select this image exclusively
+        for (const im of images) im.selected = (im === hitIm);
+        draw();
+        evt.preventDefault();
+        return;
+      }
+      // Prepare rectangle selection; activate on small movement to not interfere with click-to-add
+      rectSelectPending = true;
+      isRectSelecting = false;
+      rectStart = ms;
+      rectCurrent = ms;
+      rectMode = (evt.ctrlKey || evt.metaKey) ? 'toggle' : (evt.shiftKey ? 'add' : 'replace');
+      rectMoved = false;
+      // do not preventDefault here to allow click handler if no drag happens
     }
   });
 
@@ -564,6 +1062,39 @@
       reflect.preview = snapToGrid(mw);
       // Only redraw if not dragging/panning to avoid extra work
       if (!isDragging) draw();
+    }
+    // Update rotate preview while dragging
+    if (rotate.active && rotate.isRotating && rotate.pivot && !isPanning) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const vec = { x: mw.x - rotate.pivot.x, y: mw.y - rotate.pivot.y };
+      const v0 = rotate.startVec;
+      if (v0) {
+        const a0 = Math.atan2(v0.y, v0.x);
+        const a1 = Math.atan2(vec.y, vec.x);
+        let ang = a1 - a0;
+        // normalize to [-PI, PI] for stability
+        if (ang > Math.PI) ang -= 2 * Math.PI;
+        if (ang < -Math.PI) ang += 2 * Math.PI;
+        rotate.previewAngle = ang;
+        // Sync UI angle inputs
+        updateRotateUi();
+        draw();
+      }
+      evt.preventDefault();
+      return;
+    }
+    // Update translate preview while dragging
+    if (translate.active && translate.isTranslating && !isPanning) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const curr = snapToGrid(mw);
+      if (translate.start) {
+        translate.previewOffset = { x: curr.x - translate.start.x, y: curr.y - translate.start.y };
+        draw();
+      }
+      evt.preventDefault();
+      return;
     }
     // Panning takes precedence when active
     if (isPanning) {
@@ -579,6 +1110,44 @@
         }
       }
       lastMousePos = ms;
+      evt.preventDefault();
+      return;
+    }
+
+    // Image dragging handling
+    if (isDraggingImage && dragImage) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const target = { x: mw.x + dragImageOffsetWorld.x, y: mw.y + dragImageOffsetWorld.y };
+      const snapped = snapToGrid(target);
+      if (snapped.x !== dragImage.x || snapped.y !== dragImage.y) {
+        dragImage.x = snapped.x;
+        dragImage.y = snapped.y;
+        imageDragMoved = true;
+        // Update any vertices attached to this image
+        updateAttachedVerticesForImage(dragImage);
+        draw();
+      }
+      evt.preventDefault();
+      return;
+    }
+
+    // Rectangle selection handling
+    if (rectSelectPending || isRectSelecting) {
+      const ms = getMousePos(evt);
+      // If pending, check if moved enough to activate
+      if (rectSelectPending && !isRectSelecting) {
+        const dx = ms.x - rectStart.x;
+        const dy = ms.y - rectStart.y;
+        if (Math.hypot(dx, dy) >= RECT_ACTIVATE_DIST) {
+          isRectSelecting = true;
+        }
+      }
+      if (isRectSelecting) {
+        rectCurrent = ms;
+        rectMoved = true;
+        draw();
+      }
       evt.preventDefault();
       return;
     }
@@ -620,6 +1189,56 @@
 
   // Drag end / Pan end
   window.addEventListener('mouseup', (evt) => {
+    // Commit rotation if rotating
+    if (rotate.active && rotate.isRotating) {
+      const ang = rotate.previewAngle || 0;
+      if (Math.abs(ang) > 1e-12) {
+        performRotationAroundPoint(rotate.pivot, ang);
+        rotate.fade = { pivot: { ...rotate.pivot }, start: performance.now(), duration: 700 };
+      }
+      // reset
+      rotate.active = false;
+      rotate.pivot = null;
+      rotate.startVec = null;
+      rotate.previewAngle = 0;
+      rotate.isRotating = false;
+      updateRotateUi();
+      draw();
+      evt.preventDefault();
+      return;
+    }
+
+    // Commit image drag if dragging image
+    if (isDraggingImage && dragImage) {
+      isDraggingImage = false;
+      dragImage = null;
+      if (imageDragMoved) {
+        pushHistory();
+        suppressNextClick = true;
+      }
+      imageDragMoved = false;
+      evt.preventDefault();
+      return;
+    }
+    // Commit translation if translating
+    if (translate.active && translate.isTranslating) {
+      const dx = translate.previewOffset.x || 0;
+      const dy = translate.previewOffset.y || 0;
+      if (Math.abs(dx) > 1e-12 || Math.abs(dy) > 1e-12) {
+        performTranslationByOffset(dx, dy);
+        if (translate.start) {
+          translate.fade = { from: { ...translate.start }, to: { x: translate.start.x + dx, y: translate.start.y + dy }, start: performance.now(), duration: 700 };
+        }
+      }
+      translate.active = false;
+      translate.start = null;
+      translate.previewOffset = { x: 0, y: 0 };
+      translate.isTranslating = false;
+      updateTranslateUi();
+      draw();
+      evt.preventDefault();
+      return;
+    }
     // End panning if active
     if (isPanning) {
       isPanning = false;
@@ -629,6 +1248,56 @@
       }
       panMoved = false;
       canvas.style.cursor = isSpacePan ? 'grab' : '';
+      evt.preventDefault();
+      return;
+    }
+
+    // Finalize rectangle selection if active/pending
+    if (isRectSelecting || rectSelectPending) {
+      const ms = getMousePos(evt);
+      if (isRectSelecting) {
+        rectCurrent = ms;
+      }
+      if (rectMoved && rectStart && rectCurrent) {
+        const minX = Math.min(rectStart.x, rectCurrent.x);
+        const maxX = Math.max(rectStart.x, rectCurrent.x);
+        const minY = Math.min(rectStart.y, rectCurrent.y);
+        const maxY = Math.max(rectStart.y, rectCurrent.y);
+
+        const inside = (v) => {
+          const p = worldToScreen(v);
+          return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+        };
+
+        if (rectMode === 'replace') {
+          for (const v of vertices) { v.selected = false; v.selectedAt = undefined; }
+          for (const v of vertices) {
+            if (inside(v)) { v.selected = true; v.selectedAt = selectionCounter++; }
+          }
+        } else if (rectMode === 'add') {
+          for (const v of vertices) {
+            if (inside(v) && !v.selected) { v.selected = true; v.selectedAt = selectionCounter++; }
+          }
+        } else if (rectMode === 'toggle') {
+          for (const v of vertices) {
+            if (inside(v)) {
+              if (v.selected) { v.selected = false; v.selectedAt = undefined; }
+              else { v.selected = true; v.selectedAt = selectionCounter++; }
+            }
+          }
+        }
+        suppressNextClick = true; // prevent click adding a point after selection
+      }
+
+      // reset rect selection state
+      rectSelectPending = false;
+      isRectSelecting = false;
+      rectStart = null;
+      rectCurrent = null;
+      rectMode = 'replace';
+      rectMoved = false;
+
+      draw();
       evt.preventDefault();
       return;
     }
@@ -652,6 +1321,9 @@
     if (suppressNextClick) { suppressNextClick = false; return; }
     // Ignore clicks while space-pan mode is active
     if (isSpacePan || isPanning) { evt.preventDefault(); return; }
+
+    // Translate mode: ignore click (drag-only)
+    if (translate.active) { evt.preventDefault(); return; }
 
     // Reflect mode: capture points instead of toggling/adding vertices
     if (reflect.active) {
@@ -679,6 +1351,23 @@
         draw();
       }
       evt.preventDefault();
+      return;
+    }
+
+    // Place image mode: place selected image on canvas at clicked position
+    if (placeImageMode && placeImageMode.filename) {
+      const ms = getMousePos(evt);
+      const mw = screenToWorld(ms);
+      const ws = snapToGrid(mw);
+      const id = nextImageId++;
+      const im = { id, src: placeImageMode.filename, x: ws.x, y: ws.y, w: 6, h: null, rot: 0, scale: 1, selected: true };
+      images.push(im);
+      // Kick image load and redraw when ready
+      const el = getOrLoadImage(im.src);
+      if (el && !el.complete) { el.onload = () => draw(); }
+      placeImageMode = null;
+      draw();
+      pushHistory();
       return;
     }
 
@@ -711,6 +1400,18 @@
       selectedAt: undefined,
       label: defaultLabelForId(id),
     };
+
+    // If a selected image is under this click, bind the new vertex to it
+    let boundImage = null;
+    for (let i = images.length - 1; i >= 0; i--) {
+      const im = images[i];
+      if (!im.selected) continue;
+      if (imageContainsPoint(im, ms)) { boundImage = im; break; }
+    }
+    if (boundImage) {
+      attachVertexToImage(vtx, boundImage, ws);
+    }
+
     vertices.push(vtx);
     draw();
     pushHistory();
@@ -767,15 +1468,47 @@
     return lines.some(l => (l.aId === aId && l.bId === bId) || (l.aId === bId && l.bId === aId));
   }
 
-  // Connect selected vertices into lines in selection order, optionally closing the loop
+  // Delete selected vertices and any connected lines
+  function deleteSelected() {
+    const selectedIds = new Set(vertices.filter(v => v.selected).map(v => v.id));
+    if (selectedIds.size === 0) return;
+    // Remove lines that reference any selected vertex
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const ln = lines[i];
+      if (selectedIds.has(ln.aId) || selectedIds.has(ln.bId)) {
+        lines.splice(i, 1);
+      }
+    }
+    // Remove the selected vertices themselves
+    for (let i = vertices.length - 1; i >= 0; i--) {
+      if (selectedIds.has(vertices[i].id)) {
+        vertices.splice(i, 1);
+      }
+    }
+    draw();
+    pushHistory();
+  }
+
+  // Connect selected vertices into lines; when closing loop, order vertices around centroid to avoid self-crossing
   connectSelectedBtn.addEventListener('click', () => {
-    const selected = vertices
+    let selected = vertices
       .filter(v => v.selected)
       .sort((a, b) => (a.selectedAt ?? 0) - (b.selectedAt ?? 0));
     if (selected.length < 2) return;
 
     const color = lineColorInput.value;
     const width = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+
+    const shouldClose = !!(closeLoopChk && closeLoopChk.checked && selected.length >= 3);
+
+    // If closing a loop, sort by polar angle around centroid to form a proper polygon
+    if (shouldClose) {
+      const cx = selected.reduce((s, v) => s + v.x, 0) / selected.length;
+      const cy = selected.reduce((s, v) => s + v.y, 0) / selected.length;
+      selected = selected
+        .slice()
+        .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+    }
 
     // Connect consecutive vertices
     for (let i = 0; i < selected.length - 1; i++) {
@@ -786,8 +1519,8 @@
       }
     }
 
-    // Optionally close the loop if 3+ vertices and the checkbox is on
-    if (closeLoopChk && closeLoopChk.checked && selected.length >= 3) {
+    // Optionally close the loop
+    if (shouldClose) {
       const firstId = selected[0].id;
       const lastId = selected[selected.length - 1].id;
       if (!lineExists(firstId, lastId)) {
@@ -799,10 +1532,107 @@
     pushHistory();
   });
 
+  // Delete selected button
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener('click', () => {
+      deleteSelected();
+    });
+  }
+
   // Reflect button toggles reflect mode
   if (reflectBtn) {
     reflectBtn.addEventListener('click', () => {
       if (reflect.active) cancelReflectMode(); else startReflectMode();
+    });
+  }
+
+  // Rotate button toggles rotate mode
+  if (rotateBtn) {
+    rotateBtn.addEventListener('click', () => {
+      if (rotate.active) cancelRotateMode(); else startRotateMode();
+    });
+  }
+
+  // Translate button toggles translate mode
+  if (translateBtn) {
+    translateBtn.addEventListener('click', () => {
+      if (translate.active) cancelTranslateMode(); else startTranslateMode();
+    });
+  }
+  // Translate numeric apply
+  if (translateApplyBtn) {
+    translateApplyBtn.addEventListener('click', () => {
+      const dx = parseFloat(translateDxInput ? translateDxInput.value : '0') || 0;
+      const dy = parseFloat(translateDyInput ? translateDyInput.value : '0') || 0;
+      if (Math.abs(dx) > 1e-12 || Math.abs(dy) > 1e-12) {
+        performTranslationByOffset(dx, dy);
+      }
+      if (translate.active) cancelTranslateMode();
+    });
+  }
+
+  // --- Image modal and actions ---
+  function openImageModal() {
+    if (!imageModal) return;
+    imageModal.hidden = false;
+    imageModal.setAttribute('aria-hidden', 'false');
+  }
+  function closeImageModal() {
+    if (!imageModal) return;
+    imageModal.hidden = true;
+    imageModal.setAttribute('aria-hidden', 'true');
+  }
+  if (addImageBtn) {
+    addImageBtn.addEventListener('click', () => {
+      openImageModal();
+    });
+  }
+  if (closeImageModalBtn) {
+    closeImageModalBtn.addEventListener('click', () => closeImageModal());
+  }
+  if (imageModal) {
+    imageModal.addEventListener('click', (e) => {
+      const backdrop = e.target.closest('[data-close]');
+      if (backdrop) { closeImageModal(); return; }
+      const btn = e.target.closest('button.gallery-item');
+      if (btn) {
+        const fname = btn.getAttribute('data-filename');
+        if (fname) {
+          placeImageMode = { filename: fname };
+          closeImageModal();
+        }
+      }
+    });
+  }
+  if (clearImagesBtn) {
+    clearImagesBtn.addEventListener('click', () => {
+      images.length = 0;
+      draw();
+      pushHistory();
+    });
+  }
+
+  // Angle/dir inputs: update preview angle (no commit) when in rotate mode with pivot selected
+  if (rotateAngleInput) {
+    rotateAngleInput.addEventListener('input', () => {
+      if (rotate.active && rotate.pivot) {
+        const deg = parseFloat(rotateAngleInput.value) || 0;
+        const dir = (rotateDirSelect && rotateDirSelect.value === 'cw') ? -1 : 1;
+        rotate.previewAngle = deg * Math.PI / 180 * dir;
+        updateRotateUi();
+        draw();
+      }
+    });
+  }
+  if (rotateDirSelect) {
+    rotateDirSelect.addEventListener('change', () => {
+      if (rotate.active && rotate.pivot) {
+        const deg = parseFloat(rotateAngleInput ? rotateAngleInput.value : '0') || 0;
+        const dir = (rotateDirSelect.value === 'cw') ? -1 : 1;
+        rotate.previewAngle = deg * Math.PI / 180 * dir;
+        updateRotateUi();
+        draw();
+      }
     });
   }
 
@@ -888,11 +1718,48 @@
     const active = document.activeElement;
     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
 
-    // Escape cancels reflect mode
-    if (e.key === 'Escape' && reflect.active) {
-      cancelReflectMode();
-      e.preventDefault();
-      return;
+    // Escape cancels reflect/rotate modes
+    if (e.key === 'Escape') {
+      let handled = false;
+      if (reflect.active) { cancelReflectMode(); handled = true; }
+      if (rotate.active) { cancelRotateMode(); handled = true; }
+      if (translate.active) { cancelTranslateMode(); handled = true; }
+      if (handled) { e.preventDefault(); return; }
+    }
+
+    // Enter applies typed rotation angle when in rotate mode
+    if (e.key === 'Enter' && rotate.active && rotate.pivot) {
+      // Only apply when not typing in some other unrelated input
+      const target = document.activeElement;
+      const isAngleInput = target && (target.id === 'rotateAngle' || target.id === 'rotateDir');
+      if (isAngleInput || !isInput) {
+        const deg = parseFloat(rotateAngleInput ? rotateAngleInput.value : '0') || 0;
+        const dir = (rotateDirSelect && rotateDirSelect.value === 'cw') ? -1 : 1;
+        const ang = deg * Math.PI / 180 * dir;
+        if (Math.abs(ang) > 1e-12) {
+          performRotationAroundPoint(rotate.pivot, ang);
+          rotate.fade = { pivot: { ...rotate.pivot }, start: performance.now(), duration: 700 };
+        }
+        cancelRotateMode();
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // Enter applies typed translation dx, dy
+    if (e.key === 'Enter') {
+      const target = document.activeElement;
+      const isTranslateInput = target && (target.id === 'translateDx' || target.id === 'translateDy');
+      if (isTranslateInput || (!isInput && (translateDxInput || translateDyInput))) {
+        const dx = parseFloat(translateDxInput ? translateDxInput.value : '0') || 0;
+        const dy = parseFloat(translateDyInput ? translateDyInput.value : '0') || 0;
+        if (Math.abs(dx) > 1e-12 || Math.abs(dy) > 1e-12) {
+          performTranslationByOffset(dx, dy);
+        }
+        if (translate.active) cancelTranslateMode();
+        e.preventDefault();
+        return;
+      }
     }
 
     // Space: temporary grab/pan mode (ignore when typing in inputs)
@@ -911,6 +1778,13 @@
         e.preventDefault();
         undo();
       }
+      return;
+    }
+
+    // Delete selected vertices (Delete or Backspace keys)
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
+      e.preventDefault();
+      deleteSelected();
       return;
     }
 
@@ -938,9 +1812,90 @@
     }
   });
 
+  // Selection rectangle overlay
+  function drawSelectionRectOverlay() {
+    if (!isRectSelecting || !rectStart || !rectCurrent) return;
+    const x = Math.min(rectStart.x, rectCurrent.x);
+    const y = Math.min(rectStart.y, rectCurrent.y);
+    const w = Math.abs(rectCurrent.x - rectStart.x);
+    const h = Math.abs(rectCurrent.y - rectStart.y);
+    ctx.save();
+    ctx.strokeStyle = '#1976d2';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6,4]);
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+    ctx.fillStyle = 'rgba(25, 118, 210, 0.12)';
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  // --- Style update helpers for selected items ---
+  function updateSelectedVerticesColor(newColor) {
+    let changed = false;
+    for (const v of vertices) {
+      if (v.selected && v.color !== newColor) {
+        v.color = newColor;
+        changed = true;
+      }
+    }
+    if (changed) draw();
+    return changed;
+  }
+
+  function updateLinesForSelectedVerticesStyle({ color, width } = {}) {
+    const selIds = new Set(vertices.filter(v => v.selected).map(v => v.id));
+    if (selIds.size === 0) return false;
+    let changed = false;
+    for (const ln of lines) {
+      const aSel = selIds.has(ln.aId);
+      const bSel = selIds.has(ln.bId);
+      if (aSel && bSel) {
+        if (color != null && ln.color !== color) { ln.color = color; changed = true; }
+        if (width != null) {
+          const w = clamp(width, 1, 20);
+          if (ln.width !== w) { ln.width = w; changed = true; }
+        }
+      }
+    }
+    if (changed) draw();
+    return changed;
+  }
+
+  // --- React to control changes to apply to selected items ---
+  if (vertexColorInput) {
+    vertexColorInput.addEventListener('input', () => {
+      updateSelectedVerticesColor(vertexColorInput.value);
+    });
+    vertexColorInput.addEventListener('change', () => {
+      if (updateSelectedVerticesColor(vertexColorInput.value)) pushHistory();
+    });
+  }
+
+  if (lineColorInput) {
+    lineColorInput.addEventListener('input', () => {
+      updateLinesForSelectedVerticesStyle({ color: lineColorInput.value });
+    });
+    lineColorInput.addEventListener('change', () => {
+      if (updateLinesForSelectedVerticesStyle({ color: lineColorInput.value })) pushHistory();
+    });
+  }
+
+  if (lineWidthInput) {
+    lineWidthInput.addEventListener('input', () => {
+      const w = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+      updateLinesForSelectedVerticesStyle({ width: w });
+    });
+    lineWidthInput.addEventListener('change', () => {
+      const w = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+      if (updateLinesForSelectedVerticesStyle({ width: w })) pushHistory();
+    });
+  }
+
   // Initial draw and history init
   draw();
   pushHistory();
   updateUndoButton();
   updateReflectUi();
+  updateRotateUi();
+  updateTranslateUi();
 })();
