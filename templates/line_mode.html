@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Line Graph Mode</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <style>
+    /* Minimal additions specific to line mode */
+    html, body { height: 100%; }
+    body { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    .main-wrap { display: grid; grid-template-columns: 360px 1fr; gap: 0; align-items: stretch; min-height: 0; }
+    .sidebar { width: auto; border-left: none; border-right: 1px solid #e0e0e0; overflow: auto; }
+    .series-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+    .series-card header { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .series-card table { width: 100%; border-collapse: collapse; }
+    .series-card th, .series-card td { border: 1px solid #eee; padding: 4px 6px; text-align: left; }
+    .series-card input[type="number"] { width: 100%; }
+    .series-card .row-actions { text-align: center; }
+    .chart-wrap { padding: 12px; display: grid; grid-template-rows: auto 1fr; gap: 12px; min-height: 0; overflow: auto; }
+    #lineChart { width: 100%; max-width: 1200px; height: 100%; border: 1px solid #ddd; background: #fff; }
+    .controls .group { align-items: baseline; }
+  </style>
+</head>
+<body>
+  <header class="app-header" role="banner">
+    <nav class="toolbar panels controls" aria-label="Line graph controls">
+      <div class="panel" style="margin-left:auto;">
+        <div class="group" role="group" aria-label="Collaboration status">
+          <span id="presence" title="Number of users currently online in this document">• Offline</span>
+          <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
+          <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+        </div>
+      </div>
+      <details class="panel" open>
+        <summary>Axes</summary>
+        <div class="group" role="group" aria-label="Axis labels">
+          <label>X label: <input id="xAxisLabelText" type="text" value="X" /></label>
+          <label>Size: <input id="xAxisLabelSize" type="number" min="8" max="48" value="14" /></label>
+          <label>Color: <input id="xAxisLabelColor" type="color" value="#333333" /></label>
+          <label>Font:
+            <select id="xAxisLabelFont">
+              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+              <option value="Georgia, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+            </select>
+          </label>
+        </div>
+        <div class="group" role="group" aria-label="Axis labels">
+          <label>Y label: <input id="yAxisLabelText" type="text" value="Y" /></label>
+          <label>Size: <input id="yAxisLabelSize" type="number" min="8" max="48" value="14" /></label>
+          <label>Color: <input id="yAxisLabelColor" type="color" value="#333333" /></label>
+          <label>Font:
+            <select id="yAxisLabelFont">
+              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+              <option value="Georgia, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+            </select>
+          </label>
+        </div>
+        <div class="group" role="group" aria-label="Tick labels">
+          <label>X ticks size: <input id="xTickSize" type="number" min="6" max="36" value="12" /></label>
+          <label>Color: <input id="xTickColor" type="color" value="#444444" /></label>
+          <label>Font:
+            <select id="xTickFont">
+              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+              <option value="Georgia, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+            </select>
+          </label>
+          <span class="hint">X can be negative</span>
+        </div>
+        <div class="group" role="group" aria-label="Tick labels">
+          <label>Y ticks size: <input id="yTickSize" type="number" min="6" max="36" value="12" /></label>
+          <label>Color: <input id="yTickColor" type="color" value="#444444" /></label>
+          <label>Font:
+            <select id="yTickFont">
+              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+              <option value="Georgia, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+            </select>
+          </label>
+          <span class="hint">Y is constrained to 0 or above</span>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>Legend</summary>
+        <div class="group" role="group" aria-label="Legend controls">
+          <label><input id="legendDisplay" type="checkbox" checked /> Show legend</label>
+          <label>Label size: <input id="legendSize" type="number" min="8" max="36" value="12" /></label>
+          <label>Color: <input id="legendColor" type="color" value="#333333" /></label>
+          <label>Font:
+            <select id="legendFont">
+              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+              <option value="Georgia, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>Series</summary>
+        <div class="group" role="group" aria-label="Series controls">
+          <button id="addSeriesBtn" type="button">Add data series</button>
+        </div>
+      </details>
+
+      <div class="panel">
+        <div class="group" style="display:flex; gap:10px; align-items:center;">
+          <button id="exportPdfBtn" type="button">Export PDF</button>
+          <a href="/" style="text-decoration:none;">← Back to Main Mode</a>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="main-wrap">
+    <aside class="sidebar" aria-label="Data tables">
+      <div id="seriesContainer"></div>
+    </aside>
+    <section class="chart-wrap">
+      <div>
+        <p class="hint" style="margin: 0 0 6px;">Enter numeric X and Y values in one or more tables. The graph updates automatically.</p>
+      </div>
+      <canvas id="lineChart" aria-label="Line graph" role="img"></canvas>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='line_mode.js') }}"></script>
+</body>
+</html>

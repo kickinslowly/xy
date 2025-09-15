@@ -1005,7 +1005,8 @@
   function getOrLoadImage(src) {
     if (imageCache.has(src)) return imageCache.get(src);
     const img = new Image();
-    img.src = (src.startsWith('http') || src.startsWith('/')) ? src : (document.baseURI.replace(/\/$/, '') + '/static/' + src);
+    // Always resolve to an absolute path under Flask's static route to avoid query-string/baseURI issues
+    img.src = (src.startsWith('http') || src.startsWith('/')) ? src : ('/static/' + src);
     imageCache.set(src, img);
     return img;
   }
@@ -2753,5 +2754,128 @@
   updateRotateUi();
   updateScaleUi();
   updateTranslateUi();
+  // Collaboration (Socket.IO) setup for multi-user real-time editing
+  (async function setupCollaboration(){
+    const presenceEl = document.getElementById('presence');
+    const shareBtn = document.getElementById('shareSessionBtn');
+    const joinBtn = document.getElementById('joinSessionBtn');
+    const getParam = (name) => new URLSearchParams(window.location.search).get(name);
+
+    async function ensurePin(mode) {
+      let pin = (getParam('pin') || '').trim();
+      if (!pin) {
+        try {
+          const res = await fetch(`/api/new-session?mode=${encodeURIComponent(mode)}`);
+          const data = await res.json();
+          pin = String(data.pin || '').trim();
+          if (pin) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('pin', pin);
+            history.replaceState(null, '', url.toString());
+          }
+        } catch (e) {
+          console.error('Failed to create a new session PIN', e);
+        }
+      }
+      return pin;
+    }
+
+    const mode = 'plane';
+    const pin = await ensurePin(mode);
+    window.currentSessionPin = pin;
+    const room = pin || (window.location.pathname + ':plane');
+    const clientId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+    function setPresence(count, online) {
+      if (!presenceEl) return;
+      if (!online) {
+        presenceEl.textContent = '• Offline';
+        return;
+      }
+      const n = Number(count) || 1;
+      presenceEl.textContent = `• ${n} online`;
+    }
+
+    function setupShareJoinUi() {
+      if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+          const txt = `Session PIN: ${window.currentSessionPin || pin}`;
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(window.currentSessionPin || pin);
+              alert(`${txt}\n(Copied to clipboard)`);
+            } else {
+              // Fallback prompt lets the user copy manually
+              window.prompt('Copy this PIN to share:', window.currentSessionPin || pin);
+            }
+          } catch(_) {
+            window.prompt('Copy this PIN to share:', window.currentSessionPin || pin);
+          }
+        });
+      }
+      if (joinBtn) {
+        joinBtn.addEventListener('click', () => {
+          const input = window.prompt('Enter the PIN to join another session:');
+          const val = (input || '').trim();
+          if (!val) return;
+          // basic validation: digits only
+          const cleaned = val.replace(/\s+/g, '');
+          const url = new URL(window.location.href);
+          url.searchParams.set('pin', cleaned);
+          // reload to join new session cleanly
+          window.location.href = url.toString();
+        });
+      }
+    }
+
+    setupShareJoinUi();
+
+    if (typeof io !== 'undefined') {
+      const socket = io();
+
+      socket.on('connect', () => {
+        setPresence(1, true);
+        socket.emit('join', { room, mode });
+        socket.emit('request_state', { room, mode });
+      });
+
+      socket.on('disconnect', () => setPresence(0, false));
+
+      socket.on('presence', (p) => {
+        if (p && p.room === room) setPresence(p.count, true);
+      });
+
+      function applyRemoteState(state) {
+        if (!state) return;
+        restoreFromSnapshot(state);
+        draw();
+        // Do not push to history to avoid echo/undo complexity for now
+      }
+
+      socket.on('state', (msg) => {
+        if (msg && msg.room === room && msg.mode === mode) {
+          applyRemoteState(msg.state);
+        }
+      });
+
+      socket.on('state_update', (msg) => {
+        if (msg && msg.room === room && msg.mode === mode && msg.clientId !== clientId) {
+          applyRemoteState(msg.state);
+        }
+      });
+
+      // Decorate pushHistory to also broadcast state updates
+      const _pushHistory = pushHistory;
+      pushHistory = function () {
+        _pushHistory();
+        try {
+          const snap = makeSnapshot();
+          socket.emit('state_update', { room, mode, clientId, state: snap });
+        } catch (_) { /* noop */ }
+      };
+    } else {
+      setPresence(0, false);
+    }
+  })();
 })();
 

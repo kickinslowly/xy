@@ -9,6 +9,13 @@
 <body>
   <header class="app-header" role="banner">
     <nav class="toolbar panels" aria-label="Canvas controls">
+      <div class="panel" style="margin-left:auto;">
+        <div class="group" role="group" aria-label="Collaboration status">
+          <span id="presence" title="Number of users currently online in this document">• Offline</span>
+          <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
+          <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+        </div>
+      </div>
       <details class="panel">
         <summary>View</summary>
         <div class="group" role="group" aria-label="View controls">
@@ -159,6 +166,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
