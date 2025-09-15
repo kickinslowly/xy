@@ -16,5 +16,9 @@ def index():
     return render_template('index.html', available_images=images)
 
 
+@app.route('/line-mode')
+def line_mode():
+    return render_template('line_mode.html')
+
 if __name__ == '__main__':
     app.run(debug=True)

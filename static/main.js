@@ -24,6 +24,7 @@
   const redoBtn = document.getElementById('redoBtn');
   const clearSelectionBtn = document.getElementById('clearSelection');
   const vertexListEl = document.getElementById('vertexList');
+  const exportPdfBtn = document.getElementById('exportPdfBtn');
 
   // Reflection UI elements
   const reflectBtn = document.getElementById('reflectBtn');
@@ -76,6 +77,20 @@
   const images = []; // {id, src, vertexIds: [v0, v1, v2, v3], selected}
   const imageCache = new Map(); // src -> HTMLImageElement (loaded)
   let placeImageMode = null; // { filename }
+
+  // Image direct-manipulation (resize/rotate) UI constants and state
+  const EDGE_HIT_TOL = 8;       // px from edge to show resize
+  const CORNER_HIT_TOL = 10;    // px from corner (inside) to show corner-resize
+  const ROTATE_INNER = 12;      // inner radius (px) for rotate ring around corners (outside image)
+  const ROTATE_OUTER = 24;      // outer radius (px) for rotate ring
+
+  // Hovered handle over topmost image at mouse
+  // type: 'resize-edge' | 'resize-corner' | 'rotate' | 'move'
+  // edge: 0=top,1=right,2=bottom,3=left; corner: 0=TL,1=TR,2=BR,3=BL
+  let hoverHandle = null;
+
+  // Active direct-manipulation action for images (resize/rotate)
+  let imageAction = null; // { type, image, startMouseWorld, moved, edge?, corner?, start:{v0,v1,v3}, normals?, center? }
 
   // Reflection state and animation
   const reflect = {
@@ -486,7 +501,12 @@
   function performReflectionAcrossLine(A, B) {
     // Duplicate selected vertices and images across line; keep originals
     const selectedVerts = vertices.filter(v => v.selected);
-    const selectedImages = images.filter(im => im.selected);
+    const selectedVertIds = new Set(selectedVerts.map(v => v.id));
+    // Consider an image selected if either it's explicitly selected or all four of its corner vertices are selected
+    const selectedImages = images.filter(im => {
+      if (im.selected) return true;
+      return im.vertexIds && im.vertexIds.length === 4 && im.vertexIds.every(id => selectedVertIds.has(id));
+    });
     if (selectedVerts.length === 0 && selectedImages.length === 0) return;
 
     // Map old vertex id -> new vertex id
@@ -1177,6 +1197,102 @@
     return null;
   }
 
+  // Get image corners in world coords [v0(TL), v1(TR), v2(BR), v3(BL)]
+  function getImageCornersWorld(im) {
+    if (!im || !im.vertexIds || im.vertexIds.length !== 4) return null;
+    const vs = im.vertexIds.map(id => vertices.find(v => v.id === id));
+    if (vs.some(v => !v)) return null;
+    return vs.map(v => ({ x: v.x, y: v.y }));
+  }
+  function getImageCornersScreen(im) {
+    const cw = getImageCornersWorld(im);
+    return cw ? cw.map(p => worldToScreen(p)) : null;
+  }
+  function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + dy*dy; }
+  function distancePointToSegment(p, a, b) {
+    const vx = b.x - a.x, vy = b.y - a.y;
+    const wx = p.x - a.x, wy = p.y - a.y;
+    const c1 = vx * wx + vy * wy;
+    if (c1 <= 0) return Math.hypot(p.x - a.x, p.y - a.y);
+    const c2 = vx * vx + vy * vy;
+    if (c2 <= c1) return Math.hypot(p.x - b.x, p.y - b.y);
+    const t = c1 / c2;
+    const proj = { x: a.x + t * vx, y: a.y + t * vy };
+    return Math.hypot(p.x - proj.x, p.y - proj.y);
+  }
+  function normalize(v) {
+    const len = Math.hypot(v.x, v.y);
+    if (len < 1e-12) return { x: 0, y: 0 };
+    return { x: v.x / len, y: v.y / len };
+  }
+  function perp(v) { return { x: -v.y, y: v.x }; }
+
+  function computeEdgeNormals(cw) {
+    // cw: world corners [v0, v1, v2, v3]
+    const eTop = { x: cw[1].x - cw[0].x, y: cw[1].y - cw[0].y };
+    const eRight = { x: cw[2].x - cw[1].x, y: cw[2].y - cw[1].y };
+    const eBottom = { x: cw[2].x - cw[3].x, y: cw[2].y - cw[3].y };
+    const eLeft = { x: cw[3].x - cw[0].x, y: cw[3].y - cw[0].y };
+    return {
+      nTop: normalize(perp(eTop)),
+      nRight: normalize(perp(eRight)),
+      nBottom: normalize(perp(eBottom)),
+      nLeft: normalize(perp(eLeft)),
+    };
+  }
+
+  function getImageHandleAtPoint(ms) {
+    for (let i = images.length - 1; i >= 0; i--) {
+      const im = images[i];
+      const sc = getImageCornersScreen(im);
+      if (!sc) continue;
+      const inside = imageContainsPoint(im, ms);
+      // Corner distances
+      let closestCorner = -1, closestCornerDist = Infinity;
+      for (let c = 0; c < 4; c++) {
+        const d = Math.hypot(ms.x - sc[c].x, ms.y - sc[c].y);
+        if (d < closestCornerDist) { closestCornerDist = d; closestCorner = c; }
+      }
+      if (!inside && closestCornerDist >= ROTATE_INNER && closestCornerDist <= ROTATE_OUTER) {
+        return { image: im, type: 'rotate', corner: closestCorner };
+      }
+      if (inside && closestCornerDist <= CORNER_HIT_TOL) {
+        return { image: im, type: 'resize-corner', corner: closestCorner };
+      }
+      if (inside) {
+        const edgeSegs = [ [sc[0], sc[1]], [sc[1], sc[2]], [sc[3], sc[2]], [sc[0], sc[3]] ];
+        let bestEdge = -1, bestDist = Infinity;
+        for (let e = 0; e < 4; e++) {
+          const d = distancePointToSegment(ms, edgeSegs[e][0], edgeSegs[e][1]);
+          if (d < bestDist) { bestDist = d; bestEdge = e; }
+        }
+        if (bestDist <= EDGE_HIT_TOL) {
+          return { image: im, type: 'resize-edge', edge: bestEdge };
+        }
+        return { image: im, type: 'move' };
+      }
+    }
+    return null;
+  }
+
+  function setCursorForHandle(h) {
+    if (!h) { canvas.style.cursor = ''; return; }
+    if (h.type === 'rotate') { canvas.style.cursor = 'alias'; return; }
+    if (h.type === 'resize-edge') {
+      if (h.edge === 0 || h.edge === 2) canvas.style.cursor = 'ns-resize';
+      else canvas.style.cursor = 'ew-resize';
+      return;
+    }
+    if (h.type === 'resize-corner') {
+      // generic mapping: TL/BR => nwse, TR/BL => nesw
+      if (h.corner === 0 || h.corner === 2) canvas.style.cursor = 'nwse-resize';
+      else canvas.style.cursor = 'nesw-resize';
+      return;
+    }
+    if (h.type === 'move') { canvas.style.cursor = 'move'; return; }
+    canvas.style.cursor = '';
+  }
+
   function getImageScreenAABB(im) {
     const s = pixelsPerUnit * (im.scale || 1);
     const wpx = (im.w || 6) * s;
@@ -1409,6 +1525,34 @@
       return;
     }
 
+    // Direct image manipulation: start resize/rotate if handle under cursor
+    if (!isPanning && !reflect.active && !rotate.active && !translate.active) {
+      const h = getImageHandleAtPoint(ms);
+      if (h && (h.type === 'rotate' || h.type === 'resize-edge' || h.type === 'resize-corner')) {
+        const im = h.image;
+        // select image exclusively
+        selectImageExclusively(im);
+        const startMw = snapToGrid(screenToWorld(ms));
+        const vids = im.vertexIds;
+        const v0 = vertices.find(v => v.id === vids[0]);
+        const v1 = vertices.find(v => v.id === vids[1]);
+        const v2 = vertices.find(v => v.id === vids[2]); // dependent
+        const v3 = vertices.find(v => v.id === vids[3]);
+        const start = { v0: { x: v0.x, y: v0.y }, v1: { x: v1.x, y: v1.y }, v3: { x: v3.x, y: v3.y } };
+        const cornersW = [ {x:v0.x,y:v0.y}, {x:v1.x,y:v1.y}, {x:v2.x,y:v2.y}, {x:v3.x,y:v3.y} ];
+        imageAction = { type: h.type, image: im, startMouseWorld: startMw, moved: false, start, edge: h.edge, corner: h.corner };
+        if (h.type === 'rotate') {
+          const center = { x: (cornersW[0].x + cornersW[2].x) / 2, y: (cornersW[0].y + cornersW[2].y) / 2 };
+          imageAction.center = center;
+          imageAction.startVec = { x: startMw.x - center.x, y: startMw.y - center.y };
+        } else {
+          imageAction.normals = computeEdgeNormals(cornersW);
+        }
+        evt.preventDefault();
+        return;
+      }
+    }
+
     const hit = hitTestVertex(ms);
     if (hit) {
       // Prevent dragging the dependent corner (BR) of any image; it is computed from other three
@@ -1551,6 +1695,96 @@
       return;
     }
 
+    // Image direct-manipulation drag (resize/rotate)
+    if (imageAction && imageAction.image) {
+      const ms = getMousePos(evt);
+      const mw = snapToGrid(screenToWorld(ms));
+      const d = { x: mw.x - imageAction.startMouseWorld.x, y: mw.y - imageAction.startMouseWorld.y };
+      const im = imageAction.image;
+      const vids = im.vertexIds;
+      const v0Ref = vertices.find(v => v.id === vids[0]);
+      const v1Ref = vertices.find(v => v.id === vids[1]);
+      const v2Ref = vertices.find(v => v.id === vids[2]); // not set directly
+      const v3Ref = vertices.find(v => v.id === vids[3]);
+      const start = imageAction.start;
+
+      function setV(ref, p) {
+        const s = snapToGrid(p);
+        ref.x = s.x; ref.y = s.y;
+      }
+
+      if (imageAction.type === 'rotate') {
+        const c = imageAction.center;
+        const v0 = { x: start.v0.x - c.x, y: start.v0.y - c.y };
+        const v1 = { x: start.v1.x - c.x, y: start.v1.y - c.y };
+        const v3 = { x: start.v3.x - c.x, y: start.v3.y - c.y };
+        const a0 = Math.atan2(imageAction.startVec.y, imageAction.startVec.x);
+        const a1 = Math.atan2(mw.y - c.y, mw.x - c.x);
+        let ang = a1 - a0;
+        if (ang > Math.PI) ang -= 2 * Math.PI;
+        if (ang < -Math.PI) ang += 2 * Math.PI;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const rot = (p) => ({ x: c.x + p.x * ca - p.y * sa, y: c.y + p.x * sa + p.y * ca });
+        setV(v0Ref, rot(v0));
+        setV(v1Ref, rot(v1));
+        setV(v3Ref, rot(v3));
+        updateImageDependentCorner(im);
+        imageAction.moved = true;
+        draw();
+        evt.preventDefault();
+        return;
+      }
+
+      if (imageAction.type === 'resize-edge' || imageAction.type === 'resize-corner') {
+        const N = imageAction.normals;
+        const dot = (u, v) => u.x * v.x + u.y * v.y;
+        const addScaled = (p, n, s) => ({ x: p.x + n.x * s, y: p.y + n.y * s });
+        if (imageAction.type === 'resize-edge') {
+          const edge = imageAction.edge;
+          if (edge === 0) {
+            const a = dot(d, N.nTop);
+            setV(v0Ref, addScaled(start.v0, N.nTop, a));
+            setV(v1Ref, addScaled(start.v1, N.nTop, a));
+          } else if (edge === 1) {
+            const a = dot(d, N.nRight);
+            setV(v1Ref, addScaled(start.v1, N.nRight, a));
+          } else if (edge === 2) {
+            const a = dot(d, N.nBottom);
+            setV(v3Ref, addScaled(start.v3, N.nBottom, a));
+          } else if (edge === 3) {
+            const a = dot(d, N.nLeft);
+            setV(v0Ref, addScaled(start.v0, N.nLeft, a));
+            setV(v3Ref, addScaled(start.v3, N.nLeft, a));
+          }
+        } else {
+          const c = imageAction.corner;
+          if (c === 0) {
+            const a = dot(d, N.nTop), b = dot(d, N.nLeft);
+            setV(v0Ref, addScaled(addScaled(start.v0, N.nTop, a), N.nLeft, b));
+            setV(v1Ref, addScaled(start.v1, N.nTop, a));
+            setV(v3Ref, addScaled(start.v3, N.nLeft, b));
+          } else if (c === 1) {
+            const a = dot(d, N.nTop), b = dot(d, N.nRight);
+            setV(v1Ref, addScaled(addScaled(start.v1, N.nTop, a), N.nRight, b));
+            setV(v0Ref, addScaled(start.v0, N.nTop, a));
+          } else if (c === 2) {
+            const a = dot(d, N.nRight), b = dot(d, N.nBottom);
+            setV(v1Ref, addScaled(start.v1, N.nRight, a));
+            setV(v3Ref, addScaled(start.v3, N.nBottom, b));
+          } else if (c === 3) {
+            const a = dot(d, N.nLeft), b = dot(d, N.nBottom);
+            setV(v3Ref, addScaled(addScaled(start.v3, N.nLeft, a), N.nBottom, b));
+            setV(v0Ref, addScaled(start.v0, N.nLeft, a));
+          }
+        }
+        updateImageDependentCorner(im);
+        imageAction.moved = true;
+        draw();
+        evt.preventDefault();
+        return;
+      }
+    }
+
     // Image dragging handling (translate bound vertices)
     if (isDraggingImage && dragImage) {
       const ms = getMousePos(evt);
@@ -1604,8 +1838,8 @@
     // Hover feedback over images when idle
     if (!isPanning && !reflect.active && !rotate.active && !translate.active) {
       const msHover = getMousePos(evt);
-      const hitImHover = hitTestImage(msHover);
-      canvas.style.cursor = hitImHover ? 'move' : '';
+      hoverHandle = getImageHandleAtPoint(msHover);
+      setCursorForHandle(hoverHandle);
     }
 
     if (!isDragging || !dragVertex) return;
@@ -1678,6 +1912,14 @@
       scale.isScaling = false;
       updateScaleUi();
       draw();
+      evt.preventDefault();
+      return;
+    }
+
+    // Commit image resize/rotate action
+    if (imageAction && imageAction.image) {
+      if (imageAction.moved) { pushHistory(); suppressNextClick = true; }
+      imageAction = null;
       evt.preventDefault();
       return;
     }
@@ -2464,6 +2706,42 @@
       const w = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
       if (updateLinesForSelectedVerticesStyle({ width: w })) pushHistory();
     });
+  }
+
+  // --- Export current view as PDF ---
+  function exportCurrentViewToPdf() {
+    try {
+      const jspdfNS = window.jspdf || window.jsPDF || {};
+      const jsPDF = jspdfNS.jsPDF || jspdfNS;
+      if (typeof jsPDF !== 'function') {
+        alert('PDF export library failed to load. Please check your network connection.');
+        return;
+      }
+      // Ensure canvas size reflects current CSS display
+      if (typeof fitCanvasToDisplay === 'function') {
+        // If available in scope; otherwise canvas sizing is already handled on resize
+        try { fitCanvasToDisplay(); } catch (_) {}
+      }
+      const w = canvas.width;
+      const h = canvas.height;
+      // Use JPEG for smaller file size; background becomes white automatically
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const orientation = w >= h ? 'l' : 'p';
+      const pdf = new jsPDF({ orientation, unit: 'px', format: [w, h], compress: true, putOnlyUsedFonts: true });
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, w, h);
+      const ts = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const filename = `coordinate-plane-${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}_${pad(ts.getHours())}-${pad(ts.getMinutes())}-${pad(ts.getSeconds())}.pdf`;
+      pdf.save(filename);
+    } catch (err) {
+      console.error('Export PDF failed:', err);
+      alert('Failed to export PDF. See console for details.');
+    }
+  }
+
+  // Wire export button handler
+  if (exportPdfBtn) {
+    exportPdfBtn.addEventListener('click', exportCurrentViewToPdf);
   }
 
   // Initial draw and history init

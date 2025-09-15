@@ -108,6 +108,18 @@
           <button id="clearAll" type="button" title="Remove all content">Clear all</button>
         </div>
       </div>
+
+      <div class="panel">
+        <div class="group" role="group" aria-label="Mode switch">
+          <button type="button" id="goToLineMode" title="Switch to Line Graph Mode" onclick="window.location.href='{{ url_for('line_mode') }}'">Line Graph Mode</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="group" role="group" aria-label="Export">
+          <button id="exportPdfBtn" type="button" title="Export current view as PDF">Export PDF</button>
+        </div>
+      </div>
     </nav>
   </header>
 
@@ -146,6 +158,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
