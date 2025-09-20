@@ -29,6 +29,9 @@
   const legendFont = qs('#legendFont');
 
   const chartCanvas = qs('#lineChart');
+  const mathInfoLineContent = qs('#mathInfoLineContent');
+  const createDeleteLineBtn = qs('#createDeleteLineBtn');
+  const selectAllBtn = qs('#selectAllBtn');
 
   /** @type {Chart|null} */
   let chart = null;
@@ -36,6 +39,89 @@
   // State: list of series, each with DOM refs and id
   let seriesSeq = 1;
   const allSeries = new Map(); // id -> {id, cardEl, labelEl, colorEl, widthEl, tbodyEl}
+  let rowSelectCounter = 1;
+  let rowIdSeq = 1; // unique id for each row
+  const infiniteLines = new Map(); // key "id1|id2" -> { rowIds:[id1,id2], datasetLabel, color }
+
+  // Simple undo stack to restore deletions (rows/series)
+  const undoStack = [];
+  function pushUndo(action) {
+    // Only keep last 50 actions
+    undoStack.push(action);
+    if (undoStack.length > 50) undoStack.shift();
+  }
+  function undoLast() {
+    const action = undoStack.pop();
+    if (!action) return false;
+    try {
+      if (action.type === 'row-delete') {
+        const { tbodyEl, index, rowEl, infiniteEntries } = action;
+        if (!tbodyEl || !rowEl) return false;
+        const rows = Array.from(tbodyEl.children);
+        if (index >= 0 && index < rows.length) {
+          tbodyEl.insertBefore(rowEl, rows[index]);
+        } else {
+          tbodyEl.appendChild(rowEl);
+        }
+        // Restore any infinite lines that were removed due to the row deletion
+        if (Array.isArray(infiniteEntries)) {
+          for (const [k, v] of infiniteEntries) {
+            infiniteLines.set(k, v);
+          }
+        }
+        updateChart();
+        updateMathInfoLineMode();
+        updateSelectAllBtnLabel();
+        return true;
+      } else if (action.type === 'series-delete') {
+        const { index, cardEl, seriesId, infiniteEntries } = action;
+        if (!cardEl) return false;
+        const cards = Array.from(seriesContainer.children);
+        if (index >= 0 && index < cards.length) {
+          seriesContainer.insertBefore(cardEl, cards[index]);
+        } else {
+          seriesContainer.appendChild(cardEl);
+        }
+        // Re-register in allSeries map
+        const labelEl = cardEl.querySelector('.series-label');
+        const colorEl = cardEl.querySelector('.series-color');
+        const widthEl = cardEl.querySelector('.series-width');
+        const tbodyEl = cardEl.querySelector('tbody');
+        const thXEl = cardEl.querySelector('.th-x-label');
+        const thYEl = cardEl.querySelector('.th-y-label');
+        const id = seriesId || cardEl.dataset.id;
+        if (id) allSeries.set(id, { id, cardEl, labelEl, colorEl, widthEl, tbodyEl, thXEl, thYEl });
+        // Restore any infinite lines connected to rows in this series
+        if (Array.isArray(infiniteEntries)) {
+          for (const [k, v] of infiniteEntries) {
+            infiniteLines.set(k, v);
+          }
+        }
+        updateChart();
+        updateMathInfoLineMode();
+        updateSelectAllBtnLabel();
+        return true;
+      }
+    } catch (e) {
+      console.error('Undo failed', e);
+    }
+    return false;
+  }
+
+  // Keyboard shortcut: Ctrl/Cmd+Z to undo last deletion in line mode
+  document.addEventListener('keydown', (e) => {
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const ctrl = isMac ? e.metaKey : e.ctrlKey;
+    if (!ctrl) return;
+    // Only handle plain Ctrl+Z without Shift for now (browser Ctrl+Shift+Z redo unaffected)
+    if (e.key === 'z' || e.key === 'Z') {
+      // If there is something to undo in our stack, prefer app-level undo
+      if (undoStack.length > 0) {
+        e.preventDefault();
+        undoLast();
+      }
+    }
+  });
 
   function createSeriesCard(initial = false) {
     const id = `S${seriesSeq++}`;
@@ -58,7 +144,12 @@
       </header>
       <table aria-label="Data table for ${id}">
         <thead>
-          <tr><th style="width:40%">X</th><th style="width:40%">Y</th><th class="row-actions" style="width:20%">Action</th></tr>
+          <tr>
+            <th style="width:10%">Select</th>
+            <th style="width:30%"><span class="th-x-label">X</span></th>
+            <th style="width:30%"><span class="th-y-label">Y</span></th>
+            <th class="row-actions" style="width:30%">Action</th>
+          </tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -70,10 +161,17 @@
     const widthEl = card.querySelector('.series-width');
     const addRowBtn = card.querySelector('.add-row');
     const removeSeriesBtn = card.querySelector('.remove-series');
+    const thXEl = card.querySelector('.th-x-label');
+    const thYEl = card.querySelector('.th-y-label');
+    if (thXEl) thXEl.textContent = (xAxisLabelText?.value || 'X');
+    if (thYEl) thYEl.textContent = (yAxisLabelText?.value || 'Y');
 
     function addRow(x = '', y = '') {
       const tr = document.createElement('tr');
+      const rowId = `R${rowIdSeq++}`;
+      tr.setAttribute('data-row-id', rowId);
       tr.innerHTML = `
+        <td class="row-select"><label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="select-point"> Select</label></td>
         <td><input type="number" step="any" class="cell-x" value="${x}" aria-label="X value"></td>
         <td><input type="number" step="any" class="cell-y" value="${y}" aria-label="Y value"></td>
         <td class="row-actions"><button type="button" class="del-row">Delete</button></td>
@@ -93,33 +191,48 @@
       const btn = e.target.closest('.del-row');
       if (btn) {
         const tr = btn.closest('tr');
+        const rowId = tr.getAttribute('data-row-id');
+        // Prepare undo action before removal
+        const tbodyEl = tbody;
+        const index = Array.prototype.indexOf.call(tbodyEl.children, tr);
+        const infiniteEntries = rowId ? collectInfiniteEntriesForRow(rowId) : [];
+        pushUndo({ type: 'row-delete', tbodyEl, index, rowEl: tr, infiniteEntries });
+        // Now remove row and associated infinite lines
         tr.remove();
+        if (rowId) removeInfiniteLinesForRow(rowId);
         updateChart();
       }
     });
     removeSeriesBtn.addEventListener('click', () => {
+      // Prepare undo before removal
+      const index = Array.prototype.indexOf.call(seriesContainer.children, card);
+      const infiniteEntries = collectInfiniteEntriesForSeries(card);
+      pushUndo({ type: 'series-delete', index, cardEl: card, seriesId: id, infiniteEntries });
+      // Remove series and related infinite lines
+      removeInfiniteLinesForSeries(card);
       allSeries.delete(id);
       card.remove();
       updateChart();
     });
 
     seriesContainer.appendChild(card);
-    allSeries.set(id, { id, cardEl: card, labelEl, colorEl, widthEl, tbodyEl: tbody });
-    if (!initial) updateChart();
+    allSeries.set(id, { id, cardEl: card, labelEl, colorEl, widthEl, tbodyEl: tbody, thXEl, thYEl });
+    if (!initial) { updateChart(); updateMathInfoLineMode(); }
     return id;
   }
 
   function gatherSeriesData() {
-    /** @type {{label:string, color:string, width:number, points:{x:number,y:number}[]}[]} */
+    /** @type {{label:string, color:string, width:number, points:{x:number,y:number,_rowId?:string}[]}[]} */
     const result = [];
     for (const { cardEl, labelEl, colorEl, widthEl, tbodyEl } of allSeries.values()) {
       const pts = [];
       qsa('tr', tbodyEl).forEach(tr => {
         const x = parseFloat(qs('.cell-x', tr)?.value ?? '');
         const y = parseFloat(qs('.cell-y', tr)?.value ?? '');
+        const rowId = tr.getAttribute('data-row-id') || undefined;
         if (!Number.isNaN(x) && !Number.isNaN(y)) {
-          // Enforce y >= 0 (positive quadrant along Y) by clamping
-          pts.push({ x, y: Math.max(0, y) });
+          // Allow negative Y values; preserve as entered
+          pts.push({ x, y, _rowId: rowId });
         }
       });
       // Sort by x for clean line rendering
@@ -153,6 +266,24 @@
     return { min, max };
   }
 
+  function computeYBounds(series) {
+    let min = Infinity, max = -Infinity;
+    for (const s of series) {
+      for (const p of s.points) {
+        if (p.y < min) min = p.y;
+        if (p.y > max) max = p.y;
+      }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return { min: 0, max: 10 };
+    }
+    if (min === max) {
+      const pad = Math.abs(min) > 0 ? Math.abs(min) * 0.1 : 1;
+      return { min: min - pad, max: max + pad };
+    }
+    return { min, max };
+  }
+
   function ensureChart() {
     if (chart) return chart;
     chart = new Chart(chartCanvas.getContext('2d'), {
@@ -168,7 +299,10 @@
             type: 'linear',
             title: { display: true, text: 'X' },
             ticks: { color: '#444', font: { size: 12, family: getComputedStyle(document.body).fontFamily }, stepSize: 1 },
-            grid: { color: 'rgba(0,0,0,0.06)' },
+            grid: {
+              color: (ctx) => (ctx.tick?.value === 0 ? '#000000' : 'rgba(0,0,0,0.06)'),
+              lineWidth: (ctx) => (ctx.tick?.value === 0 ? 1.5 : 1),
+            },
           },
           y: {
             type: 'linear',
@@ -176,7 +310,10 @@
             min: 0,
             title: { display: true, text: 'Y' },
             ticks: { color: '#444', font: { size: 12, family: getComputedStyle(document.body).fontFamily }, stepSize: 1 },
-            grid: { color: 'rgba(0,0,0,0.06)' },
+            grid: {
+              color: (ctx) => (ctx.tick?.value === 0 ? '#000000' : 'rgba(0,0,0,0.06)'),
+              lineWidth: (ctx) => (ctx.tick?.value === 0 ? 1.5 : 1),
+            },
           },
         },
         plugins: {
@@ -199,29 +336,202 @@
     return chart;
   }
 
+  function pairKey(id1, id2) {
+    const [a, b] = [String(id1), String(id2)].sort();
+    return `${a}|${b}`;
+  }
+  function getRowXY(tr) {
+    const x = parseFloat(qs('.cell-x', tr)?.value ?? '');
+    const y = parseFloat(qs('.cell-y', tr)?.value ?? '');
+    return { x, y };
+  }
+  function getRowById(id) {
+    return seriesContainer.querySelector(`tr[data-row-id="${id}"]`);
+  }
+  function computeMBFromRows(tr1, tr2) {
+    const p1 = getRowXY(tr1);
+    const p2 = getRowXY(tr2);
+    if (![p1.x, p1.y, p2.x, p2.y].every(Number.isFinite)) return { valid: false };
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return { valid: false }; // same point
+    if (Math.abs(dx) < 1e-12) return { valid: false, vertical: true, x: p1.x };
+    const m = dy / dx;
+    const b = p1.y - m * p1.x;
+    return { valid: true, m, b };
+  }
+  function refreshCreateDeleteBtn() {
+    if (!createDeleteLineBtn) return;
+    const selected = Array.from(seriesContainer.querySelectorAll('tbody tr.selected-point'));
+    if (selected.length !== 2) {
+      createDeleteLineBtn.style.display = 'none';
+      return;
+    }
+    const id1 = selected[0].getAttribute('data-row-id');
+    const id2 = selected[1].getAttribute('data-row-id');
+    const key = pairKey(id1, id2);
+    const comp = computeMBFromRows(selected[0], selected[1]);
+    if (!comp.valid || comp.vertical) {
+      createDeleteLineBtn.style.display = 'none';
+      return;
+    }
+    const exists = infiniteLines.has(key);
+    createDeleteLineBtn.style.display = '';
+    createDeleteLineBtn.textContent = exists ? 'Delete line' : 'Create line';
+  }
+  function collectInfiniteEntriesForRow(rowId) {
+    const found = [];
+    for (const [k, v] of infiniteLines) {
+      if (v.rowIds && v.rowIds.includes(rowId)) found.push([k, { ...v, rowIds: [...v.rowIds] }]);
+    }
+    return found;
+  }
+  function collectInfiniteEntriesForSeries(cardEl) {
+    const found = [];
+    const rows = qsa('tbody tr', cardEl);
+    const ids = rows.map(r => r.getAttribute('data-row-id'));
+    for (const [k, v] of infiniteLines) {
+      if (v.rowIds && v.rowIds.some(id => ids.includes(id))) found.push([k, { ...v, rowIds: [...v.rowIds] }]);
+    }
+    return found;
+  }
+  function removeInfiniteLinesForRow(rowId) {
+    const toDelete = [];
+    for (const [k, v] of infiniteLines) {
+      if (v.rowIds.includes(rowId)) toDelete.push(k);
+    }
+    if (toDelete.length) {
+      toDelete.forEach(k => infiniteLines.delete(k));
+      updateChart();
+    }
+  }
+  function removeInfiniteLinesForSeries(cardEl) {
+    const rows = qsa('tbody tr', cardEl);
+    const ids = rows.map(r => r.getAttribute('data-row-id'));
+    const toDelete = [];
+    for (const [k, v] of infiniteLines) {
+      if (v.rowIds.some(id => ids.includes(id))) toDelete.push(k);
+    }
+    toDelete.forEach(k => infiniteLines.delete(k));
+  }
+
+  // Select-all helpers
+  function updateSelectAllBtnLabel() {
+    if (!selectAllBtn) return;
+    const rows = qsa('tbody tr', seriesContainer);
+    const selected = qsa('tbody tr.selected-point', seriesContainer);
+    selectAllBtn.disabled = rows.length === 0;
+    const allSelected = rows.length > 0 && selected.length === rows.length;
+    selectAllBtn.textContent = allSelected ? 'Clear selection' : 'Select all rows';
+  }
+
   function updateChart() {
+    updateMathInfoLineMode();
     const sers = gatherSeriesData();
     const c = ensureChart();
 
     // Update datasets
+    const selectedIds = new Set(Array.from(seriesContainer.querySelectorAll('tbody tr.selected-point')).map(tr => tr.getAttribute('data-row-id')));
+    const anySelected = selectedIds.size > 0;
     c.data.datasets = sers.map(s => ({
       label: s.label || 'Series',
       data: s.points,
       borderColor: s.color,
-      backgroundColor: s.color,
+      backgroundColor: (ctx) => s.color,
       borderWidth: s.width,
-      pointRadius: 3,
-      pointHoverRadius: 4,
+      pointRadius: (ctx) => {
+        const id = ctx?.raw?._rowId;
+        if (!id) return anySelected ? 0 : 3;
+        return selectedIds.has(id) ? 6 : (anySelected ? 0 : 3);
+      },
+      pointHoverRadius: (ctx) => {
+        const id = ctx?.raw?._rowId;
+        return selectedIds.has(id) ? 7 : (anySelected ? 0 : 4);
+      },
+      pointBorderColor: (ctx) => {
+        const id = ctx?.raw?._rowId;
+        return selectedIds.has(id) ? '#ffd600' : s.color;
+      },
+      pointBorderWidth: (ctx) => {
+        const id = ctx?.raw?._rowId;
+        return selectedIds.has(id) ? 3 : 0;
+      },
       showLine: true,
       fill: false,
       tension: 0, // straight lines
+      order: 1,
     }));
 
-    // Axis bounds: x can be negative, y constrained to >= 0
+    // Axis bounds: x can be negative; y can be negative when present
     const xb = computeXBounds(sers);
-    c.options.scales.x.min = xb.min;
-    c.options.scales.x.max = xb.max;
-    c.options.scales.y.min = 0; // positive Y only
+    const yb = computeYBounds(sers);
+    // Ensure the origin (0,0) is always visible horizontally
+    let xmin = xb.min;
+    let xmax = xb.max;
+    if (!(Number.isFinite(xmin) && Number.isFinite(xmax))) { xmin = 0; xmax = 10; }
+    if (xmin > 0) xmin = 0;
+    if (xmax < 0) xmax = 0;
+    c.options.scales.x.min = xmin;
+    c.options.scales.x.max = xmax;
+
+    // Y bounds: default to positive quadrant when no negatives yet, else fit data
+    const hasNegY = Number.isFinite(yb.min) && yb.min < 0;
+    if (hasNegY) {
+      c.options.scales.y.min = yb.min;
+      c.options.scales.y.max = yb.max;
+    } else {
+      c.options.scales.y.min = 0;
+      c.options.scales.y.max = yb.max;
+    }
+
+    // Append infinite lines datasets (for 2-point exact lines the user created)
+    for (const [key, info] of infiniteLines) {
+      const tr1 = getRowById(info.rowIds[0]);
+      const tr2 = getRowById(info.rowIds[1]);
+      if (!tr1 || !tr2) { infiniteLines.delete(key); continue; }
+      const comp = computeMBFromRows(tr1, tr2);
+      if (!comp.valid || comp.vertical) { infiniteLines.delete(key); continue; }
+      const x1 = c.options.scales.x.min;
+      const x2 = c.options.scales.x.max;
+      const y1 = comp.m * x1 + comp.b;
+      const y2 = comp.m * x2 + comp.b;
+      c.data.datasets.push({
+        label: info.datasetLabel || 'Infinite line',
+        data: [ { x: x1, y: y1 }, { x: x2, y: y2 } ],
+        borderColor: info.color || '#ff6f00',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        borderDash: [6, 6],
+        fill: false,
+        tension: 0,
+        order: 0,
+      });
+    }
+
+    // Append best-fit line dataset when 3 or more rows are selected
+    const sel = getSelectedRows();
+    if (sel.length >= 3) {
+      const reg = computeRegressionFromRows(sel);
+      if (reg.valid) {
+        const x1 = c.options.scales.x.min;
+        const x2 = c.options.scales.x.max;
+        const y1 = reg.m * x1 + reg.b;
+        const y2 = reg.m * x2 + reg.b;
+        c.data.datasets.push({
+          label: `Best fit (${sel.length} pts)`,
+          data: [ { x: x1, y: y1 }, { x: x2, y: y2 } ],
+          borderColor: '#2e7d32',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          borderDash: [4, 4],
+          fill: false,
+          tension: 0,
+          order: 0,
+        });
+      }
+    }
 
     // Axis titles and styles
     c.options.scales.x.title.display = true;
@@ -233,6 +543,14 @@
     c.options.scales.y.title.text = yAxisLabelText.value || '';
     c.options.scales.y.title.color = yAxisLabelColor.value || '#333';
     c.options.scales.y.title.font = { size: clampNum(yAxisLabelSize.value, 8, 48, 14), family: yAxisLabelFont.value };
+
+    // Sync series table headers with axis labels
+    const xHeader = xAxisLabelText.value || 'X';
+    const yHeader = yAxisLabelText.value || 'Y';
+    for (const s of allSeries.values()) {
+      if (s.thXEl) s.thXEl.textContent = xHeader;
+      if (s.thYEl) s.thYEl.textContent = yHeader;
+    }
 
     // Tick styling
     c.options.scales.x.ticks.color = xTickColor.value || '#444';
@@ -248,6 +566,8 @@
     c.options.plugins.legend.labels.font = { size: clampNum(legendSize.value, 8, 36, 12), family: legendFont.value };
 
     c.update();
+    refreshCreateDeleteBtn();
+    updateSelectAllBtnLabel();
   }
 
   function clampNum(v, min, max, fallback) {
@@ -256,8 +576,237 @@
     return fallback;
   }
 
+  function formatNum(n) {
+    if (!Number.isFinite(n)) return '';
+    const s = Math.abs(n) < 1e-8 ? '0' : n.toFixed(6);
+    return parseFloat(s).toString();
+  }
+
+  // Fraction helpers for slope display
+  function gcdInt(a, b) {
+    a = Math.abs(a|0); b = Math.abs(b|0);
+    while (b) { const t = b; b = a % b; a = t; }
+    return a || 1;
+  }
+  function toFractionApprox(x, maxDenPow = 6) {
+    if (!Number.isFinite(x)) return { num: 0, den: 1 };
+    if (Math.abs(x) < 1e-12) return { num: 0, den: 1 };
+    const s = x.toFixed(maxDenPow);
+    const parts = s.split('.');
+    if (parts.length === 1) return { num: parseInt(parts[0], 10), den: 1 };
+    const decimals = parts[1].replace(/0+$/,'');
+    if (decimals.length === 0) return { num: parseInt(parts[0], 10), den: 1 };
+    const den = Math.pow(10, decimals.length);
+    const num = Math.round(parseFloat(s) * den);
+    const g = gcdInt(num, den);
+    const sign = num < 0 ? -1 : 1;
+    return { num: sign * Math.abs(num / g), den: Math.abs(den / g) };
+  }
+  function divideFractions(n1, d1, n2, d2) {
+    if (n2 === 0) return { num: NaN, den: 1 };
+    let num = n1 * d2;
+    let den = d1 * n2;
+    if (den < 0) { num = -num; den = -den; }
+    const g = gcdInt(num, den);
+    return { num: num / g, den: den / g };
+  }
+  function formatFraction(num, den) {
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return 'undefined';
+    if (num === 0) return '0';
+    if (den === 1) return String(num);
+    return `${num}/${den}`;
+  }
+  function slopeAsFraction(dy, dx) {
+    const fDy = toFractionApprox(dy);
+    const fDx = toFractionApprox(dx);
+    const f = divideFractions(fDy.num, fDy.den, fDx.num, fDx.den);
+    let num = f.num; let den = f.den;
+    if (den < 0) { num = -num; den = -den; }
+    num = Math.trunc(num); den = Math.trunc(den);
+    return { str: formatFraction(num, den), num, den };
+  }
+
+  function getSelectedRows() {
+    return Array.from(seriesContainer.querySelectorAll('tbody tr.selected-point'))
+      .sort((a,b) => (parseInt(a.getAttribute('data-selected-at')||'0',10)) - (parseInt(b.getAttribute('data-selected-at')||'0',10)));
+  }
+  function computeRegressionFromRows(rows) {
+    let n = 0, sumx = 0, sumy = 0, sumxy = 0, sumx2 = 0;
+    for (const tr of rows) {
+      const x = parseFloat(qs('.cell-x', tr)?.value ?? '');
+      const y = parseFloat(qs('.cell-y', tr)?.value ?? '');
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return { valid: false };
+      n++;
+      sumx += x; sumy += y; sumxy += x*y; sumx2 += x*x;
+    }
+    const denom = (n * sumx2 - sumx * sumx);
+    if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return { valid: false };
+    const m = (n * sumxy - sumx * sumy) / denom;
+    const b = (sumy - m * sumx) / n;
+    return { valid: true, m, b };
+  }
+  function updateMathInfoLineMode() {
+    if (!mathInfoLineContent) return;
+    const selected = getSelectedRows();
+    if (selected.length >= 3) {
+      const reg = computeRegressionFromRows(selected);
+      if (!reg.valid) {
+        mathInfoLineContent.innerHTML = 'Selected rows must have numeric X and Y values and non-degenerate X spread for regression.';
+        refreshCreateDeleteBtn();
+        return;
+      }
+      const mStr = formatNum(reg.m);
+      const bStr = formatNum(reg.b);
+      const sign = reg.b >= 0 ? '+' : '−';
+      const absBStr = formatNum(Math.abs(reg.b));
+      const eq = `y = ${mStr}x ${sign} ${absBStr}`;
+      mathInfoLineContent.innerHTML = [
+        `<div><strong>Best-fit line</strong> (${selected.length} pts): ${eq}</div>`,
+        `<div><strong>Slope (m)</strong>: ${mStr}</div>`,
+        `<div><strong>Y-intercept (b)</strong>: ${bStr}</div>`
+      ].join('');
+      refreshCreateDeleteBtn();
+      return;
+    }
+    if (selected.length !== 2) {
+      mathInfoLineContent.innerHTML = 'Select two data points to see slope and equation. Select 3+ to see best-fit line.';
+      refreshCreateDeleteBtn();
+      return;
+    }
+    function parseRow(tr) {
+      const x = parseFloat(tr.querySelector('.cell-x')?.value);
+      const y = parseFloat(tr.querySelector('.cell-y')?.value);
+      return {x, y};
+    }
+    const p1 = parseRow(selected[0]);
+    const p2 = parseRow(selected[1]);
+    if (!Number.isFinite(p1.x) || !Number.isFinite(p1.y) || !Number.isFinite(p2.x) || !Number.isFinite(p2.y)) {
+      mathInfoLineContent.innerHTML = 'Both selected rows must have numeric X and Y values.';
+      refreshCreateDeleteBtn();
+      return;
+    }
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const samePoint = Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12;
+    if (samePoint) {
+      mathInfoLineContent.innerHTML = '<div><strong>Points coincide</strong>: slope undefined.</div>';
+      refreshCreateDeleteBtn();
+      return;
+    }
+    if (Math.abs(dx) < 1e-12) {
+      const c = p1.x;
+      const eq = `x = ${formatNum(c)}`;
+      mathInfoLineContent.innerHTML = [
+        `<div><strong>Line</strong>: ${eq}</div>`,
+        `<div><strong>Slope (m)</strong>: undefined (vertical)</div>`,
+        `<div><strong>Y-intercept (b)</strong>: n/a</div>`
+      ].join('');
+      refreshCreateDeleteBtn();
+      return;
+    }
+    const m = dy / dx;
+    const b = p1.y - m * p1.x;
+    const mFrac = slopeAsFraction(dy, dx);
+    const mStr = mFrac.str;
+    const bStr = formatNum(b);
+    const sign = b >= 0 ? '+' : '−';
+    const absBStr = formatNum(Math.abs(b));
+    const eq = `y = ${mStr}x ${sign} ${absBStr}`;
+    mathInfoLineContent.innerHTML = [
+      `<div><strong>Line</strong>: ${eq}</div>`,
+      `<div><strong>Slope (m)</strong>: ${mStr}</div>`,
+      `<div><strong>Y-intercept (b)</strong>: ${bStr}</div>`
+    ].join('');
+    refreshCreateDeleteBtn();
+  }
+
+  // Retrofit existing rows from older sessions (ensure Select checkbox and IDs)
+  function retrofitExistingRows() {
+    const rows = qsa('tbody tr', seriesContainer);
+    for (const tr of rows) {
+      // Ensure a unique data-row-id
+      if (!tr.hasAttribute('data-row-id')) {
+        tr.setAttribute('data-row-id', `R${rowIdSeq++}`);
+      }
+      // Ensure Select checkbox cell exists as the first cell
+      const firstTd = tr.querySelector('td');
+      const hasSelect = tr.querySelector('.select-point');
+      if (!hasSelect) {
+        const td = document.createElement('td');
+        td.className = 'row-select';
+        td.innerHTML = '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="select-point"> Select</label>';
+        if (firstTd) {
+          tr.insertBefore(td, firstTd);
+        } else {
+          tr.appendChild(td);
+        }
+      }
+    }
+  }
+
   // Initialize
-  addSeriesBtn.addEventListener('click', () => createSeriesCard());
+  retrofitExistingRows();
+  addSeriesBtn.addEventListener('click', () => { createSeriesCard(); retrofitExistingRows(); });
+  if (createDeleteLineBtn) {
+    createDeleteLineBtn.addEventListener('click', () => {
+      const selected = Array.from(seriesContainer.querySelectorAll('tbody tr.selected-point'))
+        .sort((a,b) => (parseInt(a.getAttribute('data-selected-at')||'0',10)) - (parseInt(b.getAttribute('data-selected-at')||'0',10)));
+      if (selected.length !== 2) return;
+      const id1 = selected[0].getAttribute('data-row-id');
+      const id2 = selected[1].getAttribute('data-row-id');
+      const key = pairKey(id1, id2);
+      if (infiniteLines.has(key)) {
+        infiniteLines.delete(key);
+        updateChart();
+        refreshCreateDeleteBtn();
+      } else {
+        const p1 = getRowXY(selected[0]);
+        const p2 = getRowXY(selected[1]);
+        const comp = computeMBFromRows(selected[0], selected[1]);
+        if (!comp.valid || comp.vertical) return;
+        infiniteLines.set(key, {
+          rowIds: [id1, id2],
+          datasetLabel: `Line through (${formatNum(p1.x)}, ${formatNum(p1.y)}) and (${formatNum(p2.x)}, ${formatNum(p2.y)})`,
+          color: '#ff6f00'
+        });
+        updateChart();
+        refreshCreateDeleteBtn();
+      }
+    });
+  }
+
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      const rows = qsa('tbody tr', seriesContainer);
+      const selected = qsa('tbody tr.selected-point', seriesContainer);
+      const allSelected = rows.length > 0 && selected.length === rows.length;
+      if (!allSelected) {
+        // Select all
+        for (const tr of rows) {
+          if (!tr.classList.contains('selected-point')) {
+            tr.classList.add('selected-point');
+            tr.setAttribute('data-selected-at', String(rowSelectCounter++));
+            tr.style.backgroundColor = '#fff8e1';
+          }
+          const cb = qs('.select-point', tr);
+          if (cb) cb.checked = true;
+        }
+      } else {
+        // Clear all
+        for (const tr of rows) {
+          tr.classList.remove('selected-point');
+          tr.removeAttribute('data-selected-at');
+          tr.style.backgroundColor = '';
+          const cb = qs('.select-point', tr);
+          if (cb) cb.checked = false;
+        }
+      }
+      updateMathInfoLineMode();
+      refreshCreateDeleteBtn();
+      updateChart();
+      updateSelectAllBtnLabel();
+    });
+  }
 
   // React to control changes
   [xAxisLabelText, xAxisLabelSize, xAxisLabelColor, xAxisLabelFont,
@@ -270,6 +819,58 @@
 
   // Initialize empty chart (no default series or data)
   updateChart();
+  updateMathInfoLineMode();
+
+  // Row selection for slope/equation info
+  seriesContainer.addEventListener('click', (e) => {
+    const tr = e.target.closest('tbody tr');
+    if (!tr) return;
+    if (e.target.closest('.del-row')) return; // ignore delete button
+    if (e.target.tagName === 'INPUT' && !e.target.classList.contains('select-point')) return; // avoid toggling when editing
+
+    // Toggle selection
+    const wasSelected = tr.classList.contains('selected-point');
+    if (wasSelected) {
+      tr.classList.remove('selected-point');
+      tr.removeAttribute('data-selected-at');
+      tr.style.backgroundColor = '';
+      const cb = qs('.select-point', tr);
+      if (cb) cb.checked = false;
+    } else {
+      tr.classList.add('selected-point');
+      tr.setAttribute('data-selected-at', String(rowSelectCounter++));
+      tr.style.backgroundColor = '#fff8e1';
+      const cb = qs('.select-point', tr);
+      if (cb) cb.checked = true;
+    }
+    updateMathInfoLineMode();
+    refreshCreateDeleteBtn();
+    updateChart();
+  });
+
+  // Checkbox selection handler (more discoverable)
+  seriesContainer.addEventListener('change', (e) => {
+    const cb = e.target.closest('.select-point');
+    if (!cb) return;
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    if (cb.checked) {
+      tr.classList.add('selected-point');
+      tr.setAttribute('data-selected-at', String(rowSelectCounter++));
+      tr.style.backgroundColor = '#fff8e1';
+    } else {
+      tr.classList.remove('selected-point');
+      tr.removeAttribute('data-selected-at');
+      tr.style.backgroundColor = '';
+    }
+    updateMathInfoLineMode();
+    refreshCreateDeleteBtn();
+    updateChart();
+  });
+
+  seriesContainer.addEventListener('input', () => {
+    updateMathInfoLineMode();
+  });
 
   // PDF Export
   async function exportPdf() {
@@ -845,4 +1446,31 @@
       setPresence(0, false);
     }
   })();
+
+  // Escape clears selection of all rows in Line Graph Mode
+  function clearAllRowSelections() {
+    const selected = qsa('tbody tr.selected-point', seriesContainer);
+    if (selected.length === 0) return false;
+    for (const tr of selected) {
+      tr.classList.remove('selected-point');
+      tr.removeAttribute('data-selected-at');
+      tr.style.backgroundColor = '';
+      const cb = qs('.select-point', tr);
+      if (cb) cb.checked = false;
+    }
+    updateMathInfoLineMode();
+    refreshCreateDeleteBtn();
+    updateChart();
+    updateSelectAllBtnLabel();
+    return true;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const cleared = clearAllRowSelections();
+      if (cleared) {
+        e.preventDefault();
+      }
+    }
+  });
 })();

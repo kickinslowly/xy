@@ -43,7 +43,6 @@
           <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" />
           <label for="vertexSize">Vertex size:</label>
           <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" aria-label="Vertex size" />
-          <button id="deleteSelected" type="button">Delete selected</button>
           <button id="clearVertices" type="button">Clear vertices</button>
         </div>
       </details>
@@ -111,6 +110,7 @@
         <div class="group" role="group" aria-label="Global actions">
           <button id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
           <button id="redoBtn" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
+          <button id="deleteSelected" type="button" title="Delete selected vertices/lines/images">Delete selected</button>
           <button id="clearSelection" type="button" title="Clear selection">Clear selection</button>
           <button id="clearAll" type="button" title="Remove all content">Clear all</button>
         </div>
@@ -119,6 +119,7 @@
       <div class="panel">
         <div class="group" role="group" aria-label="Mode switch">
           <button type="button" id="goToLineMode" title="Switch to Line Graph Mode" onclick="window.location.href='{{ url_for('line_mode') }}'">Line Graph Mode</button>
+          <button type="button" id="goToBattleship" title="Switch to Battleship Mode" onclick="window.location.href='{{ url_for('battleship') }}'">Battleship Mode</button>
         </div>
       </div>
 
@@ -138,6 +139,13 @@
       <div class="sidebar-header">
         <h3>Vertices</h3>
         <small>Click canvas to add. Edit labels here.</small>
+      </div>
+      <div style="padding: 8px 12px;">
+        <button id="createInfiniteLine" type="button" title="Graph an infinite line based on selected vertices" style="width:100%;">Graph this Line</button>
+      </div>
+      <div id="mathInfo" class="series-card" style="margin: 8px 12px;">
+        <div><strong>Line info</strong> <small class="hint">Select any 2 vertices</small></div>
+        <div id="mathInfoContent" class="hint">Select two vertices to see slope and equation.</div>
       </div>
       <ul id="vertexList" class="vertex-list" aria-live="polite"></ul>
     </aside>

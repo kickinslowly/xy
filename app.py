@@ -9,9 +9,11 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # In-memory state storage per room and mode.
 # rooms_state[room]['plane'] or ['line'] -> last known state (dict)
-rooms_state = defaultdict(lambda: {'plane': None, 'line': None})
+rooms_state = defaultdict(lambda: {'plane': None, 'line': None, 'battleship': None})
 # Track connections per room for presence
 room_members = defaultdict(set)  # room -> set of sids
+# Battleship role assignment per room: first joiner = 'A', second = 'B', others spectate
+battleship_roles = defaultdict(lambda: {'A': None, 'B': None})
 
 
 @app.route('/')
@@ -29,6 +31,11 @@ def index():
 @app.route('/line-mode')
 def line_mode():
     return render_template('line_mode.html')
+
+
+@app.route('/battleship')
+def battleship():
+    return render_template('battleship.html')
 
 
 def _generate_unique_pin(length=6):
@@ -58,6 +65,20 @@ def handle_join(data):
     mode = (data or {}).get('mode') or 'plane'
     join_room(room)
     room_members[room].add(request.sid)
+
+    # Battleship: automatic team assignment (A for first, B for second, others spectate)
+    if (mode or '').lower() == 'battleship':
+        role = None
+        roles = battleship_roles[room]
+        if roles.get('A') is None:
+            roles['A'] = request.sid
+            role = 'A'
+        elif roles.get('B') is None and roles.get('A') != request.sid:
+            roles['B'] = request.sid
+            role = 'B'
+        # Notify only the joining client about their role
+        emit('role', {'room': room, 'role': role}, room=request.sid)
+
     # Send current presence to room
     emit('presence', {'room': room, 'count': len(room_members[room])}, room=room)
     # Optionally send the current state to the new client
@@ -69,7 +90,18 @@ def handle_join(data):
 @socketio.on('leave')
 def handle_leave(data):
     room = (data or {}).get('room') or request.args.get('room') or request.path or '/'
+    mode = (data or {}).get('mode') or 'plane'
     leave_room(room)
+
+    # Free battleship role if applicable
+    if (mode or '').lower() == 'battleship':
+        roles = battleship_roles.get(room)
+        if roles:
+            if roles.get('A') == request.sid:
+                roles['A'] = None
+            if roles.get('B') == request.sid:
+                roles['B'] = None
+
     if request.sid in room_members[room]:
         room_members[room].remove(request.sid)
         emit('presence', {'room': room, 'count': len(room_members[room])}, room=room)
@@ -81,6 +113,13 @@ def handle_disconnect():
     for room, members in list(room_members.items()):
         if request.sid in members:
             members.remove(request.sid)
+            # Free battleship role if this sid was A or B in this room
+            roles = battleship_roles.get(room)
+            if roles:
+                if roles.get('A') == request.sid:
+                    roles['A'] = None
+                if roles.get('B') == request.sid:
+                    roles['B'] = None
             emit('presence', {'room': room, 'count': len(members)}, room=room)
 
 

@@ -16,6 +16,7 @@
   const lineColorInput = document.getElementById('lineColor');
   const lineWidthInput = document.getElementById('lineWidth');
   const connectSelectedBtn = document.getElementById('connectSelected');
+  const createInfiniteLineBtn = document.getElementById('createInfiniteLine');
   const clearLinesBtn = document.getElementById('clearLines');
   const closeLoopChk = document.getElementById('closeLoop');
 
@@ -25,6 +26,7 @@
   const clearSelectionBtn = document.getElementById('clearSelection');
   const vertexListEl = document.getElementById('vertexList');
   const exportPdfBtn = document.getElementById('exportPdfBtn');
+  const mathInfoContent = document.getElementById('mathInfoContent');
 
   // Reflection UI elements
   const reflectBtn = document.getElementById('reflectBtn');
@@ -72,8 +74,10 @@
   let selectionCounter = 1; // for ordering selected vertices
   const vertices = []; // {id, x, y, color, size, selected, selectedAt, label, imageId?, localX?, localY?}
   const lines = [];    // {aId, bId, color, width}
+  const infiniteLines = []; // [{ m, b, vertical?:true, x?:number, color, width }]
   // Images model
   let nextImageId = 1;
+  let nextInfiniteLineId = 1; // persistent counter for infinite line labels (Line 1, Line 2, ...)
   const images = []; // {id, src, vertexIds: [v0, v1, v2, v3], selected}
   const imageCache = new Map(); // src -> HTMLImageElement (loaded)
   let placeImageMode = null; // { filename }
@@ -136,9 +140,11 @@
     return {
       vertices: vertices.map(v => ({...v})),
       lines: lines.map(l => ({...l})),
+      infiniteLines: infiniteLines.map(il => ({...il})),
       images: images.map(im => ({...im})),
       nextVertexId,
       nextImageId,
+      nextInfiniteLineId,
       selectionCounter
     };
   }
@@ -147,10 +153,13 @@
     for (const v of (snap.vertices || [])) vertices.push({...v});
     lines.length = 0;
     for (const l of (snap.lines || [])) lines.push({...l});
+    infiniteLines.length = 0;
+    for (const il of (snap.infiniteLines || [])) infiniteLines.push({...il});
     images.length = 0;
     for (const im of (snap.images || [])) images.push({...im});
     nextVertexId = snap.nextVertexId || 1;
     nextImageId = snap.nextImageId || 1;
+    nextInfiniteLineId = snap.nextInfiniteLineId || 1;
     selectionCounter = snap.selectionCounter || 1;
   }
   function canUndo() { return history.length > 1; }
@@ -368,6 +377,67 @@
     return parseFloat(s).toString();
   }
 
+  // Intercept formatting: round decimals to 2 places, keep integers as-is, coerce -0 to 0
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+  function formatIntercept(n) {
+    if (!Number.isFinite(n)) return 'n/a';
+    const r = round2(n);
+    const v = Math.abs(r) < 1e-12 ? 0 : r; // fix -0
+    if (Number.isInteger(v)) return String(v);
+    return v.toFixed(2);
+  }
+
+  // Fraction helpers for slope display
+  function gcdInt(a, b) {
+    a = Math.abs(a|0); b = Math.abs(b|0);
+    while (b) { const t = b; b = a % b; a = t; }
+    return a || 1;
+  }
+  function toFractionApprox(x, maxDenPow = 6) {
+    // Convert float to fraction by clearing up to 10^maxDenPow decimals
+    if (!Number.isFinite(x)) return { num: 0, den: 1 };
+    if (Math.abs(x) < 1e-12) return { num: 0, den: 1 };
+    const s = x.toFixed(maxDenPow);
+    const parts = s.split('.')
+    if (parts.length === 1) return { num: parseInt(parts[0], 10), den: 1 };
+    const decimals = parts[1].replace(/0+$/,'');
+    if (decimals.length === 0) return { num: parseInt(parts[0], 10), den: 1 };
+    const den = Math.pow(10, decimals.length);
+    const num = Math.round(parseFloat(s) * den);
+    const g = gcdInt(num, den);
+    const sign = num < 0 ? -1 : 1;
+    return { num: sign * Math.abs(num / g), den: Math.abs(den / g) };
+  }
+  function divideFractions(n1, d1, n2, d2) {
+    // (n1/d1) / (n2/d2) = (n1*d2)/(d1*n2)
+    if (n2 === 0) return { num: NaN, den: 1 };
+    let num = n1 * d2;
+    let den = d1 * n2;
+    if (den < 0) { num = -num; den = -den; }
+    const g = gcdInt(num, den);
+    return { num: num / g, den: den / g };
+  }
+  function formatFraction(num, den) {
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return 'undefined';
+    if (num === 0) return '0';
+    if (den === 1) return String(num);
+    return `${num}/${den}`;
+  }
+  function slopeAsFraction(dy, dx) {
+    const fDy = toFractionApprox(dy);
+    const fDx = toFractionApprox(dx);
+    const f = divideFractions(fDy.num, fDy.den, fDx.num, fDx.den);
+    // normalize sign to numerator
+    let num = f.num; let den = f.den;
+    if (den < 0) { num = -num; den = -den; }
+    // Ensure integers
+    num = Math.trunc(num);
+    den = Math.trunc(den);
+    return { str: formatFraction(num, den), num, den };
+  }
+
   // Label helpers
   const BASE_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   function defaultLabelForId(id) {
@@ -443,6 +513,63 @@
       ctx.lineWidth = ln.width;
       ctx.lineCap = 'round';
       ctx.stroke();
+    }
+  }
+
+  function drawInfiniteLines() {
+    if (!infiniteLines.length) return;
+    const sw0 = screenToWorld({ x: 0, y: 0 });
+    const sw1 = screenToWorld({ x: canvas.width, y: canvas.height });
+    const xmin = Math.min(sw0.x, sw1.x);
+    const xmax = Math.max(sw0.x, sw1.x);
+    const ymin = Math.min(sw0.y, sw1.y);
+    const ymax = Math.max(sw0.y, sw1.y);
+
+    for (const il of infiniteLines) {
+      let a = null, b = null;
+      if (il.vertical) {
+        const x = il.x;
+        a = { x, y: ymin - 1000 };
+        b = { x, y: ymax + 1000 };
+      } else if (Number.isFinite(il.m) && Number.isFinite(il.b)) {
+        const x1 = xmin - 1000;
+        const x2 = xmax + 1000;
+        a = { x: x1, y: il.m * x1 + il.b };
+        b = { x: x2, y: il.m * x2 + il.b };
+      }
+      if (!a || !b) continue;
+
+      const baseColor = il.color || '#1e88e5';
+      const baseWidth = clamp(parseFloat(il.width) || 2, 1, 20);
+      // Draw selection highlight first (underneath)
+      if (il.selected) {
+        drawStyledWorldLine(a, b, '#ffd600', baseWidth + 3, null, 0.95);
+      }
+      // Draw the actual line
+      drawStyledWorldLine(a, b, baseColor, baseWidth);
+
+      // Draw label for selected lines only
+      if (il.selected) {
+        const pa = worldToScreen(a);
+        const pb = worldToScreen(b);
+        const mx = (pa.x + pb.x) / 2;
+        const my = (pa.y + pb.y) / 2;
+        const label = `Line ${il.lineId != null ? il.lineId : (infiniteLines.indexOf(il) + 1)}`;
+        ctx.save();
+        ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        // Slight offset from the line
+        const lx = mx;
+        const ly = my - 8;
+        // White halo for readability
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeText(label, lx, ly);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillText(label, lx, ly);
+        ctx.restore();
+      }
     }
   }
 
@@ -1348,6 +1475,7 @@
     drawGrid();
     drawImages();
     drawLines();
+    drawInfiniteLines();
     drawVertices();
     drawReflectionOverlay();
     drawRotationOverlay();
@@ -1358,6 +1486,7 @@
   }
 
   function updateSidebar() {
+    updateMathInfoPlane();
     if (!vertexListEl) return;
     const parts = [];
     for (const v of vertices) {
@@ -1372,6 +1501,171 @@
       );
     }
     vertexListEl.innerHTML = parts.join('');
+  }
+
+  function updateMathInfoPlane() {
+    if (!mathInfoContent) return;
+    // Gather selected vertices (use selectedAt ordering if available)
+    const selected = vertices.filter(v => v.selected).sort((a,b) => (a.selectedAt||0) - (b.selectedAt||0));
+
+    // Toggle visibility of the Graph this Line button based on selection count
+    if (createInfiniteLineBtn) {
+      if (selected.length >= 2) {
+        const key = selected.map(v => v.id).sort((a,b) => a - b).join('|');
+        const exists = infiniteLines.some(il => il && il.createdFromKey === key);
+        createInfiniteLineBtn.style.display = exists ? 'none' : '';
+      } else {
+        createInfiniteLineBtn.style.display = 'none';
+      }
+    }
+
+    // If any infinite lines are selected, show their info instead of vertex-based info
+    const selectedLines = infiniteLines.filter(il => il && il.selected);
+    if (selectedLines.length > 0) {
+      const parts = [];
+      if (selectedLines.length === 1) {
+        const il = selectedLines[0];
+        const labelId = il.lineId != null ? il.lineId : (infiniteLines.indexOf(il) + 1);
+        if (il.vertical) {
+          const c = il.x;
+          const eq = `x = ${escapeHtml(formatNumber(c))}`;
+          parts.push(
+            `<div><strong>Line ${labelId}</strong>: ${eq}</div>`,
+            `<div><strong>Slope (m)</strong>: undefined (vertical)</div>`,
+            `<div><strong>Y-intercept (b)</strong>: n/a</div>`
+          );
+        } else {
+          const m = il.m;
+          const b = il.b;
+          const mStr = formatNumber(m);
+          const bRounded = round2(b);
+          const bStr = formatIntercept(bRounded);
+          const sign = bRounded >= 0 ? '+' : '−';
+          const absBStr = formatIntercept(Math.abs(bRounded));
+          const eq = `y = ${escapeHtml(mStr)}x ${sign} ${escapeHtml(absBStr)}`;
+          parts.push(
+            `<div><strong>Line ${labelId}</strong>: ${eq}</div>`,
+            `<div><strong>Slope (m)</strong>: ${escapeHtml(mStr)}</div>`,
+            `<div><strong>Y-intercept (b)</strong>: ${escapeHtml(bStr)}</div>`
+          );
+        }
+      } else {
+        parts.push(`<div><strong>${selectedLines.length} selected lines</strong></div>`);
+        selectedLines.forEach((il, idx) => {
+          const labelId = il.lineId != null ? il.lineId : (infiniteLines.indexOf(il) + 1);
+          if (il.vertical) {
+            const c = il.x;
+            const eq = `x = ${escapeHtml(formatNumber(c))}`;
+            parts.push(
+              `<div style="margin-top:6px;"><strong>Line ${labelId}</strong>: ${eq}</div>`,
+              `<div><strong>Slope (m)</strong>: undefined (vertical)</div>`,
+              `<div><strong>Y-intercept (b)</strong>: n/a</div>`
+            );
+          } else {
+            const mStr = formatNumber(il.m);
+            const bRounded = round2(il.b);
+            const bStr = formatIntercept(bRounded);
+            const sign = bRounded >= 0 ? '+' : '−';
+            const absBStr = formatIntercept(Math.abs(bRounded));
+            const eq = `y = ${escapeHtml(mStr)}x ${sign} ${escapeHtml(absBStr)}`;
+            parts.push(
+              `<div style="margin-top:6px;"><strong>Line ${labelId}</strong>: ${eq}</div>`,
+              `<div><strong>Slope (m)</strong>: ${escapeHtml(mStr)}</div>`,
+              `<div><strong>Y-intercept (b)</strong>: ${escapeHtml(bStr)}</div>`
+            );
+          }
+        });
+      }
+      mathInfoContent.innerHTML = parts.join('');
+      return;
+    }
+
+    if (selected.length < 2) {
+      mathInfoContent.innerHTML = 'Select two or more vertices to see line info.';
+      return;
+    }
+
+    if (selected.length === 2) {
+      const [v1, v2] = selected;
+      const x1 = v1.x, y1 = v1.y, x2 = v2.x, y2 = v2.y;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+
+      const samePoint = Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12;
+      if (samePoint) {
+        mathInfoContent.innerHTML = '<div><strong>Points coincide</strong>: slope undefined.</div>';
+        return;
+      }
+
+      if (Math.abs(dx) < 1e-12) {
+        // Vertical line: x = c
+        const c = x1; // same x
+        const eq = `x = ${escapeHtml(formatNumber(c))}`;
+        mathInfoContent.innerHTML = [
+          `<div><strong>Line</strong>: ${eq}</div>`,
+          `<div><strong>Slope (m)</strong>: undefined (vertical)</div>`,
+          `<div><strong>Y-intercept (b)</strong>: n/a</div>`
+        ].join('');
+        return;
+      }
+
+      const m = dy / dx;
+      const b = y1 - m * x1;
+      const mFrac = slopeAsFraction(dy, dx);
+      const mStr = mFrac.str;
+      const bRounded = round2(b);
+      const bStr = formatIntercept(bRounded);
+      const sign = bRounded >= 0 ? '+' : '−';
+      const absBStr = formatIntercept(Math.abs(bRounded));
+      const eq = `y = ${escapeHtml(mStr)}x ${sign} ${escapeHtml(absBStr)}`;
+
+      mathInfoContent.innerHTML = [
+        `<div><strong>Line</strong>: ${eq}</div>`,
+        `<div><strong>Slope (m)</strong>: ${escapeHtml(mStr)}</div>`,
+        `<div><strong>Y-intercept (b)</strong>: ${escapeHtml(bStr)}</div>`
+      ].join('');
+      return;
+    }
+
+    // More than 2 selected: show least-squares line of best fit
+    const n = selected.length;
+    let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+    for (const v of selected) {
+      sumX += v.x; sumY += v.y; sumXX += v.x * v.x; sumXY += v.x * v.y;
+    }
+    const xbar = sumX / n;
+    const ybar = sumY / n;
+    const Sxx = sumXX - n * xbar * xbar;
+    const Sxy = sumXY - n * xbar * ybar;
+
+    if (Math.abs(Sxx) < 1e-12) {
+      // Vertical best-fit line at mean x
+      const c = xbar;
+      const eq = `x = ${escapeHtml(formatNumber(c))}`;
+      mathInfoContent.innerHTML = [
+        `<div><strong>Line of best fit</strong> for ${n} vertices</div>`,
+        `<div><strong>Line</strong>: ${eq}</div>`,
+        `<div><strong>Slope (m)</strong>: undefined (vertical)</div>`,
+        `<div><strong>Y-intercept (b)</strong>: n/a</div>`
+      ].join('');
+      return;
+    }
+
+    const m = Sxy / Sxx;
+    const b = ybar - m * xbar;
+    const mStr = formatNumber(m);
+    const bRounded = round2(b);
+    const bStr = formatIntercept(bRounded);
+    const sign = bRounded >= 0 ? '+' : '−';
+    const absBStr = formatIntercept(Math.abs(bRounded));
+    const eq = `y = ${escapeHtml(mStr)}x ${sign} ${escapeHtml(absBStr)}`;
+
+    mathInfoContent.innerHTML = [
+      `<div><strong>Line of best fit</strong> for ${n} vertices</div>`,
+      `<div><strong>Line</strong>: ${eq}</div>`,
+      `<div><strong>Slope (m)</strong>: ${escapeHtml(mStr)}</div>`,
+      `<div><strong>Y-intercept (b)</strong>: ${escapeHtml(bStr)}</div>`
+    ].join('');
   }
 
   function escapeHtml(s) {
@@ -1407,6 +1701,38 @@
       }
     }
     return best;
+  }
+
+  function distanceToInfiniteLinePx(il, worldPoint) {
+    if (!il) return Infinity;
+    if (il.vertical) {
+      return Math.abs(worldPoint.x - il.x) * pixelsPerUnit;
+    }
+    if (Number.isFinite(il.m) && Number.isFinite(il.b)) {
+      const num = Math.abs(il.m * worldPoint.x - worldPoint.y + il.b);
+      const den = Math.sqrt(il.m * il.m + 1);
+      return (den > 0 ? num / den : Infinity) * pixelsPerUnit;
+    }
+    return Infinity;
+  }
+
+  function hitTestInfiniteLine(mouseScreen) {
+    if (!infiniteLines.length) return null;
+    const mw = screenToWorld(mouseScreen);
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < infiniteLines.length; i++) {
+      const il = infiniteLines[i];
+      const dpx = distanceToInfiniteLinePx(il, mw);
+      const w = clamp(parseFloat(il.width) || 2, 1, 20);
+      const tol = Math.max(8, w + 6);
+      if (dpx <= tol && dpx < bestDist) {
+        bestDist = dpx;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0) return { index: bestIdx, line: infiniteLines[bestIdx], distancePx: bestDist };
+    return null;
   }
 
   // Mouse interaction and dragging vertices
@@ -2100,6 +2426,19 @@
       return;
     }
 
+    // If clicking near an infinite line, toggle its selection instead of adding a vertex
+    const ilHit = hitTestInfiniteLine(ms);
+    if (ilHit && ilHit.line) {
+      const il = ilHit.line;
+      // If no modifier, clear other line selections
+      if (!(evt.shiftKey || evt.ctrlKey || evt.metaKey)) {
+        for (const other of infiniteLines) { if (other.selected) other.selected = false; }
+      }
+      il.selected = !il.selected;
+      draw();
+      return;
+    }
+
     // else add a new vertex at world coords (snapped to grid)
     const w = screenToWorld(ms);
     const ws = snapToGrid(w);
@@ -2184,23 +2523,57 @@
 
   // Delete selected vertices and any connected lines
   function deleteSelected() {
+    let changed = false;
+
+    // Delete selected infinite lines
+    for (let i = infiniteLines.length - 1; i >= 0; i--) {
+      if (infiniteLines[i].selected) {
+        infiniteLines.splice(i, 1);
+        changed = true;
+      }
+    }
+
+    // Delete selected images, and detach any bound vertices
+    const removedImageIds = new Set();
+    for (let i = images.length - 1; i >= 0; i--) {
+      const im = images[i];
+      if (im.selected) {
+        removedImageIds.add(im.id);
+        images.splice(i, 1);
+        changed = true;
+      }
+    }
+    if (removedImageIds.size > 0) {
+      for (const v of vertices) {
+        if (removedImageIds.has(v.imageId)) {
+          delete v.imageId; delete v.localX; delete v.localY;
+        }
+      }
+    }
+
+    // Delete selected vertices and any connected finite lines
     const selectedIds = new Set(vertices.filter(v => v.selected).map(v => v.id));
-    if (selectedIds.size === 0) return;
-    // Remove lines that reference any selected vertex
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const ln = lines[i];
-      if (selectedIds.has(ln.aId) || selectedIds.has(ln.bId)) {
-        lines.splice(i, 1);
+    if (selectedIds.size > 0) {
+      // Remove lines that reference any selected vertex
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const ln = lines[i];
+        if (selectedIds.has(ln.aId) || selectedIds.has(ln.bId)) {
+          lines.splice(i, 1);
+        }
       }
-    }
-    // Remove the selected vertices themselves
-    for (let i = vertices.length - 1; i >= 0; i--) {
-      if (selectedIds.has(vertices[i].id)) {
-        vertices.splice(i, 1);
+      // Remove the selected vertices themselves
+      for (let i = vertices.length - 1; i >= 0; i--) {
+        if (selectedIds.has(vertices[i].id)) {
+          vertices.splice(i, 1);
+        }
       }
+      changed = true;
     }
-    draw();
-    pushHistory();
+
+    if (changed) {
+      draw();
+      pushHistory();
+    }
   }
 
   // Connect selected vertices into lines; when closing loop, order vertices around centroid to avoid self-crossing
@@ -2245,6 +2618,66 @@
     draw();
     pushHistory();
   });
+
+  // Create infinite line from selected vertices (exact for 2, best-fit for >2)
+  if (createInfiniteLineBtn) {
+    function computeInfiniteLineParams(selectedVerts) {
+      if (!selectedVerts || selectedVerts.length < 2) return null;
+      // If exactly 2 points and distinct
+      if (selectedVerts.length === 2) {
+        const p1 = selectedVerts[0];
+        const p2 = selectedVerts[1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return null; // identical
+        if (Math.abs(dx) < 1e-12) {
+          return { vertical: true, x: p1.x };
+        }
+        const m = dy / dx;
+        const b = p1.y - m * p1.x;
+        return { m, b };
+      }
+      // More than 2 points: least squares fit y = m x + b
+      const n = selectedVerts.length;
+      let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+      for (const v of selectedVerts) {
+        sumX += v.x; sumY += v.y; sumXX += v.x * v.x; sumXY += v.x * v.y;
+      }
+      const xbar = sumX / n;
+      const ybar = sumY / n;
+      const Sxx = sumXX - n * xbar * xbar;
+      const Sxy = sumXY - n * xbar * ybar;
+      if (Math.abs(Sxx) < 1e-12) {
+        // Treat as vertical best fit at mean x
+        return { vertical: true, x: xbar };
+      }
+      const m = Sxy / Sxx;
+      const b = ybar - m * xbar;
+      return { m, b };
+    }
+
+    createInfiniteLineBtn.addEventListener('click', () => {
+      const selected = vertices
+        .filter(v => v.selected)
+        .sort((a, b) => (a.selectedAt ?? 0) - (b.selectedAt ?? 0));
+      if (selected.length < 2) return;
+      const params = computeInfiniteLineParams(selected);
+      if (!params) return;
+      const color = lineColorInput.value;
+      const width = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+      // Store a new infinite line; keep multiple lines allowed
+      // Auto-select the newly created line so its info is shown immediately
+      const idsKey = selected.map(v => v.id).sort((a,b) => a - b).join('|');
+      const lineId = nextInfiniteLineId++;
+      if (params.vertical) {
+        infiniteLines.push({ lineId, vertical: true, x: params.x, color, width, selected: true, createdFromKey: idsKey });
+      } else {
+        infiniteLines.push({ lineId, m: params.m, b: params.b, color, width, selected: true, createdFromKey: idsKey });
+      }
+      draw();
+      pushHistory();
+    });
+  }
 
   // Delete selected button
   if (deleteSelectedBtn) {
@@ -2406,7 +2839,10 @@
     vertices.length = 0;
     // clear lines as well since they reference vertices
     lines.length = 0;
+    // clear infinite lines too for consistency when removing geometry
+    infiniteLines.length = 0;
     nextVertexId = 1;
+    nextInfiniteLineId = 1;
     selectionCounter = 1;
     draw();
     pushHistory();
@@ -2414,6 +2850,8 @@
 
   clearLinesBtn.addEventListener('click', () => {
     lines.length = 0;
+    infiniteLines.length = 0;
+    nextInfiniteLineId = 1;
     draw();
     pushHistory();
   });
@@ -2421,7 +2859,9 @@
   clearAllBtn.addEventListener('click', () => {
     vertices.length = 0;
     lines.length = 0;
+    infiniteLines.length = 0;
     nextVertexId = 1;
+    nextInfiniteLineId = 1;
     selectionCounter = 1;
     draw();
     pushHistory();
@@ -2484,17 +2924,28 @@
     redoBtn.addEventListener('click', () => redo());
   }
 
+  // Clear selection helper
+  function clearAllSelection() {
+    let changed = false;
+    for (const v of vertices) {
+      if (v.selected) { v.selected = false; v.selectedAt = undefined; changed = true; }
+    }
+    for (const im of images) {
+      if (im.selected) { im.selected = false; changed = true; }
+    }
+    for (const il of infiniteLines) {
+      if (il.selected) { il.selected = false; changed = true; }
+    }
+    if (changed) {
+      draw();
+    }
+    return changed;
+  }
+
   // Clear selection button
   if (clearSelectionBtn) {
     clearSelectionBtn.addEventListener('click', () => {
-      let changed = false;
-      for (const v of vertices) {
-        if (v.selected) { v.selected = false; v.selectedAt = undefined; changed = true; }
-      }
-      for (const im of images) {
-        if (im.selected) { im.selected = false; changed = true; }
-      }
-      if (changed) draw();
+      clearAllSelection();
     });
   }
 
@@ -2503,14 +2954,18 @@
     const active = document.activeElement;
     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
 
-    // Escape cancels reflect/rotate/translate/scale modes
+    // Escape: cancel transform modes and clear all selections
     if (e.key === 'Escape') {
       let handled = false;
       if (reflect.active) { cancelReflectMode(); handled = true; }
       if (rotate.active) { cancelRotateMode(); handled = true; }
       if (translate.active) { cancelTranslateMode(); handled = true; }
       if (scale.active) { cancelScaleMode(); handled = true; }
-      if (handled) { e.preventDefault(); return; }
+      const cleared = clearAllSelection();
+      if (handled || cleared) {
+        e.preventDefault();
+        return;
+      }
     }
 
     // Enter applies typed rotation angle when in rotate mode
@@ -2877,5 +3332,26 @@
       setPresence(0, false);
     }
   })();
+
+  // Clear selection when clicking blank space outside the coordinate plane (canvas)
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (!t) return;
+    // Ignore clicks inside the canvas itself (handled by canvas listeners)
+    if (t.closest && t.closest('#plane')) return;
+
+    // If click occurs within the canvas wrap but not on the canvas (blank margins), clear selection
+    if (t.closest && t.closest('.canvas-wrap')) {
+      clearAllSelection();
+      return;
+    }
+
+    // Ignore clicks on common interactive controls and panels
+    if (t.closest && t.closest('input, select, textarea, button, label, a, .toolbar, .sidebar, .modal, [role="dialog"], details, summary')) return;
+
+    // Otherwise this is likely blank space outside the plane; clear selection
+    clearAllSelection();
+  });
+
 })();
 

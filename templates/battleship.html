@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Battleship Mode</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <style>
+    /* Battleship-specific styles kept local to avoid impacting other modes */
+    html, body { height: 100%; }
+    body { display: grid; grid-template-rows: auto 1fr; }
+
+    .battleship-wrap { display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
+    .bs-sidebar { border-right: 1px solid #e0e0e0; padding: 12px; background: #fcfcfc; overflow: auto; }
+    .bs-main { display: grid; grid-template-rows: auto 1fr; gap: 12px; padding: 12px; overflow: auto; }
+
+    .lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px; }
+    .team-card header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .team-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+    .team-a .team-badge { color: #1565c0; }
+    .team-b .team-badge { color: #2e7d32; }
+    .team-list { font-size: 14px; color: #555; min-height: 22px; }
+    .flex-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    .grids { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    .grid-card header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+
+    /* Make boards responsive and large by default */
+    .board { --cell: clamp(32px, 7.2vmin, 64px); display: grid; grid-template-columns: 22px repeat(10, var(--cell)); grid-auto-rows: var(--cell); border: 1px solid #ddd; border-radius: 8px; overflow: clip; background: #fff; user-select: none; position: relative; }
+    .board .lbl { display: grid; place-items: center; font-size: 12px; color: #666; background: #fafafa; border-right: 1px solid #eee; }
+    .board .tl { border-bottom: 1px solid #eee; }
+    /* Bottom axis labels separator */
+    .board .lbl.bottom { border-top: 1px solid #eee; }
+    .board .bl { border-top: 1px solid #eee; }
+    /* Absolute axis labels for clarity */
+    .board .axis { position: absolute; font-size: 12px; color: #666; pointer-events: none; }
+    .board .axis.x { right: 4px; bottom: 2px; }
+    .board .axis.y { left: 4px; top: 2px; }
+    .board .cell { position: relative; border-left: 1px solid #eee; border-top: 1px solid #eee; cursor: pointer; }
+    .board .cell:hover { background: #f7fbff; }
+    #enemyBoard .cell { cursor: default; }
+    .cell.ship { background: #e3f2fd; }
+    .cell.hit { background: #ffebee; }
+    .cell.miss { background: #efefef; }
+    .cell .ping { position: absolute; inset: 0; display: grid; place-items: center; font-size: 14px; animation: pop 300ms ease-out; }
+    @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* Status & pills */
+    .status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed #e0e0e0; border-radius: 8px; background: #fff; }
+    .status .pill { padding: 4px 8px; border-radius: 999px; background: #f5f5f5; font-size: 12px; }
+    #turnPill.your-turn { background: #e3f2fd; color: #1565c0; font-weight: 700; }
+    #turnPill.waiting { background: #fff3e0; color: #e65100; }
+
+    /* Smaller roster in sidebar */
+    .bs-sidebar .lobby { grid-template-columns: 1fr; }
+    .bs-sidebar .team-card { padding: 8px; }
+    .bs-sidebar .team-card .team-list { font-size: 12px; color: #666; }
+
+    .fire-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .fire-controls label { font-size: 12px; color: #444; display: inline-flex; align-items: center; gap: 4px; }
+    .fire-controls input { width: 54px; padding: 4px 6px; }
+    .fire-controls button { padding: 6px 10px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 8px; align-items: flex-end; border-bottom: 1px solid #e0e0e0; padding: 0 4px; }
+    .tab { appearance: none; border: none; background: transparent; padding: 10px 14px; font-weight: 800; letter-spacing: 0.4px; cursor: pointer; border-bottom: 3px solid transparent; color: #555; }
+    .tab:hover { color: #111; }
+    .tab[aria-selected="true"] { color: #1565c0; border-color: #1565c0; }
+    .tabpanels { height: 100%; }
+    .tabpanel { display: none; height: 100%; }
+    .tabpanel.active { display: block; }
+
+    /* Make card fill panel and board fill card */
+    .grid-card { display: flex; flex-direction: column; height: 100%; }
+    .grid-card .board-wrap { flex: 1; display: grid; place-items: center; padding: 8px; }
+
+    .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 1000; background: rgba(0,0,0,0.6); }
+    .overlay.show { display: flex; }
+    .overlay .panel { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e0e0e0; width: min(92vw, 520px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+    .winner { background: radial-gradient(ellipse at top, #fff7e6, #ffffff 60%); }
+
+    .countdown { font-size: 28px; font-weight: 800; letter-spacing: 2px; }
+
+    /* Mobile adjustments */
+    @media (max-width: 800px) {
+      .battleship-wrap { grid-template-columns: 1fr; }
+      .bs-sidebar { border-right: none; border-bottom: 1px solid #e0e0e0; }
+    }
+
+    /* Turn overlay and attention cues */
+    #turnOverlay .panel { background: #fff; }
+    .turn-title { font-size: 40px; margin: 0 0 6px; letter-spacing: 1px; }
+    .turn-sub { color: #555; margin: 0; }
+
+    /* Subtle but visible screen-edge glow while it's your turn */
+    body.your-turn-active::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      box-shadow:
+        0 0 0 5px rgba(21,101,192,0.50) inset,
+        0 0 60px rgba(255,213,79,0.35) inset;
+      animation: glowPulse 1.6s ease-in-out infinite;
+      z-index: 500;
+    }
+    @keyframes glowPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+    /* Extra emphasis on actionable controls at turn start */
+    #fireBtn.turn-pulse {
+      animation: btnPulse 900ms ease-in-out 0s 2;
+      outline: 2px solid #ffd54f;
+      box-shadow: 0 0 0 4px rgba(255,213,79,0.25);
+    }
+    @keyframes btnPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+    .board.can-fire { outline: 2px solid #ffd54f; box-shadow: 0 0 0 3px rgba(255,213,79,0.25) inset; }
+    .board.turn-pulse { animation: boardPulse 900ms ease-in-out 0s 2; }
+    @keyframes boardPulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(255,213,79,0.25) inset; }
+      50% { box-shadow: 0 0 0 6px rgba(255,213,79,0.45) inset; }
+    }
+
+    /* Persistent turn banner above the game board */
+    .turn-banner { 
+      display: block; 
+      padding: 10px 12px; 
+      border-radius: 10px; 
+      font-weight: 800; 
+      letter-spacing: 0.4px; 
+      text-align: center; 
+      background: #f5f5f5; 
+      color: #444; 
+      border: 1px solid #e0e0e0; 
+    }
+    .turn-banner.is-you { background: #e3f2fd; color: #0d47a1; border-color: #bbdefb; }
+    .turn-banner.is-opponent { background: #fff3e0; color: #e65100; border-color: #ffe0b2; }
+    .turn-banner.is-spectator { background: #f1f8e9; color: #2e7d32; border-color: #c5e1a5; }
+  </style>
+</head>
+<body>
+<header class="app-header" role="banner">
+  <nav class="toolbar panels" aria-label="Battleship controls">
+    <div class="panel" style="margin-left:auto;">
+      <div class="group" role="group" aria-label="Collaboration status">
+        <span id="presence" title="Number of users currently online in this room">• Offline</span>
+        <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
+        <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="group" role="group" aria-label="Mode switch">
+        <a href="/" class="btn-link">← Coordinate Plane</a>
+        <a href="{{ url_for('line_mode') }}" class="btn-link">Line Graph Mode</a>
+      </div>
+    </div>
+
+    <div class="panel" id="lobbyPanel">
+      <div class="group" role="group" aria-label="Lobby">
+        <span class="pill">Teams are auto-assigned: creator is Team A, next joiner is Team B. Others spectate.</span>
+        <button id="startBtn" type="button" disabled>Start Game</button>
+        <span id="phaseText" class="pill"></span>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<main class="battleship-wrap" role="main">
+  <aside class="bs-sidebar" aria-label="Stats">
+    <div class="card">
+      <h3 style="margin:0 0 8px;">Battle Dashboard</h3>
+      <div class="status">
+        <span class="pill" id="roomPin">PIN: —</span>
+        <span class="pill" id="turnPill">Turn: —</span>
+        <span class="pill" id="youAre">You: Spectator</span>
+        <span class="pill" id="countdownPill" hidden>Starting in <strong id="countdownNum">3</strong>…</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
+      <header class="flex-row" style="justify-content:space-between;">
+        <strong>My Stats</strong>
+        <span id="yourTeamBadge" class="team-badge"></span>
+      </header>
+      <ul id="statsYou" style="list-style:none; padding-left:0; margin:6px 0 0; font-size:14px; color:#333;"></ul>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
+      <header class="flex-row" style="justify-content:space-between;">
+        <strong>Enemy Stats</strong>
+        <span id="enemyTeamBadge" class="team-badge"></span>
+      </header>
+      <ul id="statsEnemy" style="list-style:none; padding-left:0; margin:6px 0 0; font-size:14px; color:#333;"></ul>
+    </div>
+  </aside>
+
+  <section class="bs-main">
+
+    <div id="turnBanner" class="turn-banner" role="status" aria-live="polite">—</div>
+
+    <div class="tabs" role="tablist" aria-label="Battleship board tabs">
+      <button id="tabBtnEnemy" class="tab" role="tab" aria-controls="tab-enemy" aria-selected="true">ENEMY WATERS</button>
+      <button id="tabBtnYour" class="tab" role="tab" aria-controls="tab-your" aria-selected="false">YOUR FLEET</button>
+    </div>
+
+    <div class="tabpanels">
+      <div id="tab-enemy" class="tabpanel active" role="tabpanel" aria-labelledby="tabBtnEnemy" tabindex="0">
+        <div class="card grid-card" style="height:100%;">
+          <header>
+            <strong>Enemy Waters</strong>
+            <small class="hint">Enter coordinates and press Fire when it’s your team’s turn.</small>
+          </header>
+          <div class="fire-controls" role="group" aria-label="Fire controls">
+            <label for="shotRow">Y (1–10)
+              <input id="shotRow" type="number" min="1" max="10" placeholder="1" aria-label="Y value (1–10)" />
+            </label>
+            <label for="shotCol">X (1–10)
+              <input id="shotCol" type="number" min="1" max="10" placeholder="1" aria-label="X value (1–10)" />
+            </label>
+            <button id="fireBtn" type="button">Fire</button>
+            <small id="fireMsg" class="hint" style="min-width:160px;"></small>
+          </div>
+          <div class="board-wrap">
+            <div id="enemyBoard" class="board" aria-label="Enemy board"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-your" class="tabpanel" role="tabpanel" aria-labelledby="tabBtnYour" tabindex="0">
+        <div class="card grid-card" style="height:100%;">
+          <header>
+            <strong>Your Fleet</strong>
+            <small class="hint">You can’t click yourself. That’s just meditation.</small>
+          </header>
+          <div class="board-wrap">
+            <div id="yourBoard" class="board" aria-label="Your board"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Turn indicator overlay (flashes for 1s at start of your turn) -->
+<div id="turnOverlay" class="overlay" aria-live="polite" aria-hidden="true">
+  <div class="panel">
+    <h2 class="turn-title">YOUR TURN</h2>
+    <p class="turn-sub" id="turnSubText">Enter coordinates and press Fire</p>
+  </div>
+</div>
+
+<!-- Winner / Loser overlays -->
+<div id="winnerOverlay" class="overlay">
+  <div class="panel winner">
+    <h2 id="winnerText">Team X Wins!</h2>
+    <p>Confetti not included, but feel free to wave your hands wildly. 🎉</p>
+    <button id="playAgainBtn" type="button">Play Again</button>
+  </div>
+</div>
+
+<div id="loserOverlay" class="overlay">
+  <div class="panel">
+    <h2>Game Over</h2>
+    <p>It’s not you. It’s your aim. Fade to black… 🥲</p>
+    <button id="okLoserBtn" type="button">Womp womp</button>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='battleship.js') }}"></script>
+<script>
+  (function(){
+    const btnEnemy = document.getElementById('tabBtnEnemy');
+    const btnYour = document.getElementById('tabBtnYour');
+    const panelEnemy = document.getElementById('tab-enemy');
+    const panelYour = document.getElementById('tab-your');
+    if (!btnEnemy || !btnYour || !panelEnemy || !panelYour) return;
+    function activate(which){
+      const showEnemy = which === 'enemy';
+      btnEnemy.setAttribute('aria-selected', showEnemy ? 'true' : 'false');
+      btnYour.setAttribute('aria-selected', showEnemy ? 'false' : 'true');
+      panelEnemy.classList.toggle('active', showEnemy);
+      panelYour.classList.toggle('active', !showEnemy);
+      (showEnemy ? panelEnemy : panelYour).focus({ preventScroll: true });
+    }
+    btnEnemy.addEventListener('click', () => activate('enemy'));
+    btnYour.addEventListener('click', () => activate('your'));
+    const tabs = [btnEnemy, btnYour];
+    tabs.forEach((b, i) => b.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const next = e.key === 'ArrowRight' ? (i + 1) % tabs.length : (i + tabs.length - 1) % tabs.length;
+        tabs[next].focus();
+      }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        b.click();
+      }
+    }));
+  })();
+</script>
+</body>
+</html>

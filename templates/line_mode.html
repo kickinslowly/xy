@@ -118,6 +118,14 @@
 
   <main class="main-wrap">
     <aside class="sidebar" aria-label="Data tables">
+      <div id="mathInfoLine" class="series-card" style="margin: 8px 12px;">
+        <div><strong>Line info</strong> <small class="hint">Use the checkboxes: select 2 rows for exact line, 3+ for best-fit</small></div>
+        <div id="mathInfoLineContent" class="hint">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="createDeleteLineBtn" type="button" style="display:none;">Create line</button>
+          <button id="selectAllBtn" type="button">Select all rows</button>
+        </div>
+      </div>
       <div id="seriesContainer"></div>
     </aside>
     <section class="chart-wrap">
@@ -132,6 +140,6 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="{{ url_for('static', filename='line_mode.js') }}"></script>
+  <script src="{{ url_for('static', filename='line_mode.js') }}?v=20250920"></script>
 </body>
 </html>
