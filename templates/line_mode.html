@@ -11,15 +11,21 @@
     body { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
     .main-wrap { display: grid; grid-template-columns: 360px 1fr; gap: 0; align-items: stretch; min-height: 0; }
     .sidebar { width: auto; border-left: none; border-right: 1px solid #e0e0e0; overflow: auto; }
-    .series-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
-    .series-card header { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .series-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; margin-bottom: 10px; position: relative; }
+    .series-card header { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-right: 96px; }
     .series-card table { width: 100%; border-collapse: collapse; }
     .series-card th, .series-card td { border: 1px solid #eee; padding: 4px 6px; text-align: left; }
     .series-card input[type="number"] { width: 100%; }
     .series-card .row-actions { text-align: center; }
+    .series-card .remove-series { position: absolute; top: 8px; right: 8px; }
     .chart-wrap { padding: 12px; display: grid; grid-template-rows: auto 1fr; gap: 12px; min-height: 0; overflow: auto; }
     #lineChart { width: 100%; max-width: 1200px; height: 100%; border: 1px solid #ddd; background: #fff; }
     .controls .group { align-items: baseline; }
+    .help-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; font-size:12px; border:1px solid #bbb; border-radius:50%; color:#555; background:#fff; cursor:help; margin-left:6px; }
+    .help-icon:hover { background:#f0f0f0; }
+    .line-info-header { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+    .help-tooltip { position: fixed; z-index: 10000; background: #333; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 13px; min-width: 360px; max-width: min(80vw, 520px); line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,0.25); display: none; pointer-events: auto; }
+    .help-tooltip[data-open="true"] { display: block; }
   </style>
 </head>
 <body>
@@ -119,8 +125,8 @@
   <main class="main-wrap">
     <aside class="sidebar" aria-label="Data tables">
       <div id="mathInfoLine" class="series-card" style="margin: 8px 12px;">
-        <div><strong>Line info</strong> <small class="hint">Use the checkboxes: select 2 rows for exact line, 3+ for best-fit</small></div>
-        <div id="mathInfoLineContent" class="hint">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div>
+        <div class="line-info-header"><strong>Line info</strong> <button id="lineInfoHelp" type="button" class="help-icon" aria-label="Tips" aria-haspopup="dialog" aria-expanded="false" aria-describedby="lineInfoHelpTip">?</button><div id="lineInfoHelpTip" class="help-tooltip" role="tooltip">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div></div>
+        <div id="mathInfoLineContent" class="hint"></div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
           <button id="createDeleteLineBtn" type="button" style="display:none;">Create line</button>
           <button id="selectAllBtn" type="button">Select all rows</button>

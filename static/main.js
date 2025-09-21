@@ -1537,7 +1537,8 @@
         } else {
           const m = il.m;
           const b = il.b;
-          const mStr = formatNumber(m);
+          const mFrac = toFractionApprox(m);
+          const mStr = formatFraction(mFrac.num, mFrac.den);
           const bRounded = round2(b);
           const bStr = formatIntercept(bRounded);
           const sign = bRounded >= 0 ? '+' : '−';
@@ -1562,7 +1563,8 @@
               `<div><strong>Y-intercept (b)</strong>: n/a</div>`
             );
           } else {
-            const mStr = formatNumber(il.m);
+            const mFrac = toFractionApprox(il.m);
+            const mStr = formatFraction(mFrac.num, mFrac.den);
             const bRounded = round2(il.b);
             const bStr = formatIntercept(bRounded);
             const sign = bRounded >= 0 ? '+' : '−';
@@ -1653,7 +1655,8 @@
 
     const m = Sxy / Sxx;
     const b = ybar - m * xbar;
-    const mStr = formatNumber(m);
+    const mFrac = toFractionApprox(m);
+    const mStr = formatFraction(mFrac.num, mFrac.den);
     const bRounded = round2(b);
     const bStr = formatIntercept(bRounded);
     const sign = bRounded >= 0 ? '+' : '−';

@@ -16,6 +16,8 @@
   const youAreEl = qs('#youAre');
   const countdownPill = qs('#countdownPill');
   const countdownNum = qs('#countdownNum');
+  const singlePlayerToggle = qs('#singlePlayerToggle');
+  let botMoveTimer = null;
 
   const teamAList = qs('#teamAList');
   const teamBList = qs('#teamBList');
@@ -83,6 +85,7 @@
         A: { ships: null, hits: {}, misses: {} },
         B: { ships: null, hits: {}, misses: {} },
       },
+      bot: { enabled: false, team: null, controllerId: null, delayMs: 1000 },
       // bookkeeping for ship sunk animation or last move
       lastShot: null, // {team:'A'|'B', r, c, hit:bool}
     };
@@ -97,6 +100,13 @@
 
     setupShareJoinUi();
     buildBoards();
+
+    if (singlePlayerToggle) {
+      singlePlayerToggle.addEventListener('change', () => {
+        if (!state) return;
+        setSinglePlayer(!!singlePlayerToggle.checked);
+      });
+    }
 
     if (typeof io !== 'undefined') {
       socket = io();
@@ -480,6 +490,10 @@
       turnBannerEl.textContent = bText;
     }
 
+    // Sync single player toggle and ensure bot presence
+    try { if (singlePlayerToggle) singlePlayerToggle.checked = !!(state.bot && state.bot.enabled); } catch(_){ }
+    if (state.bot && state.bot.enabled) { try { ensureBotPresence(true); } catch(_){ } }
+
     // Countdown UI
     if (state.phase === 'countdown' && state.countdownEndsAt) {
       countdownPill.hidden = false;
@@ -494,6 +508,8 @@
         if (left <= 0 && state.phase === 'countdown') {
           clearInterval(countdownTimer);
           state.phase = 'playing';
+          // Immediately refresh local UI so turn indicators and bot scheduling update without needing server echo
+          updateUiFromState();
           broadcast();
         }
       };
@@ -529,8 +545,11 @@
 
     // Render boards
     renderBoards();
-    // Stats panels
     renderStats();
+
+    // Schedule bot move if it's bot's turn
+    try { maybeTriggerBotMove(); } catch(_){ }
+
     // You are label
     youAreEl.textContent = `You: ${myTeam ? 'Team ' + myTeam : 'Spectator'}`;
     yourTeamBadge.textContent = myTeam ? myTeam : '—';
@@ -741,6 +760,93 @@
     state.teams.B.members = keepB;
     // Give the losing team the first turn for morale (totally scientific)
     state.turn = (wasWinner === 'A') ? 'B' : 'A';
+  }
+
+  // Single Player (Bot) helpers
+  function setSinglePlayer(enabled) {
+    if (!state) return;
+    state.bot = state.bot || { enabled: false, team: null, controllerId: null, delayMs: 1000 };
+    if (enabled) {
+      // Ensure we are on some team; default to A if none
+      if (!myTeam) { myTeam = 'A'; ensureMember('A', clientId, myName); }
+      state.bot.team = (myTeam === 'A') ? 'B' : 'A';
+      state.bot.enabled = true;
+      if (!state.bot.controllerId) state.bot.controllerId = clientId;
+      ensureBotPresence(true);
+    } else {
+      state.bot.enabled = false;
+      if (state.bot.controllerId === clientId) {
+        // Remove bot member so multiplayer can resume naturally
+        try { if (state.teams[state.bot.team]?.members?.BOT) delete state.teams[state.bot.team].members.BOT; } catch(_){ }
+      }
+      cancelBotTimer();
+    }
+    updateUiFromState();
+    broadcast();
+  }
+
+  function ensureBotPresence(broadcastIfChanged = false) {
+    if (!state?.bot?.enabled) return;
+    if (state.bot.controllerId && state.bot.controllerId !== clientId) return; // only controller modifies
+    let changed = false;
+    const bt = state.bot.team || ((myTeam === 'A') ? 'B' : 'A');
+    if (!state.bot.team) { state.bot.team = bt; changed = true; }
+    // Add placeholder bot member
+    if (!state.teams[bt].members) state.teams[bt].members = {};
+    if (!state.teams[bt].members.BOT) { state.teams[bt].members.BOT = '🤖 Bot'; changed = true; }
+    // Ensure bot's ships placed
+    if (!state.boards[bt].ships) { state.boards[bt].ships = placeRandomShips(); changed = true; }
+    if (changed && broadcastIfChanged) broadcast();
+  }
+
+  function maybeTriggerBotMove() {
+    try { clearTimeout(botMoveTimer); } catch(_){}
+    botMoveTimer = null;
+    if (!state?.bot?.enabled) return;
+    if (state.bot.controllerId && state.bot.controllerId !== clientId) return;
+    if (state.phase !== 'playing') return;
+    const botTeam = state.bot.team || ((myTeam === 'A') ? 'B' : 'A');
+    if (state.turn !== botTeam) return;
+    if (!state.boards || !state.boards[botTeam ? (botTeam==='A'?'B':'A') : 'A']) return;
+    const delay = Math.max(200, Number(state.bot.delayMs || 1000));
+    botMoveTimer = setTimeout(() => { try { performBotMove(); } catch(e){ console.error('Bot move error', e); } }, delay);
+  }
+
+  function cancelBotTimer(){ try { clearTimeout(botMoveTimer); } catch(_){} botMoveTimer = null; }
+
+  function performBotMove() {
+    if (!state?.bot?.enabled) return;
+    if (state.bot.controllerId && state.bot.controllerId !== clientId) return;
+    if (state.phase !== 'playing') return;
+    const botTeam = state.bot.team || ((myTeam === 'A') ? 'B' : 'A');
+    if (state.turn !== botTeam) return;
+    const enemy = botTeam === 'A' ? 'B' : 'A';
+
+    // Build my shots
+    const myShots = (state.teams[botTeam]?.shotsLog) || [];
+    let pick = null;
+    try {
+      pick = window.SimpleGridBot?.pickTarget({ gridSize: 10, myShots, parity: 2 });
+    } catch(_){ }
+
+    // Fallbacks if needed
+    const shotMap = {};
+    for (const s of myShots) { shotMap[`${s.r},${s.c}`] = true; }
+    function randomUnshot(){
+      const pool = [];
+      for (let r=0;r<10;r++) for (let c=0;c<10;c++){ const k = `${r},${c}`; if (!shotMap[k]) pool.push({r,c}); }
+      return pool.length ? pool[Math.floor(Math.random()*pool.length)] : null;
+    }
+    if (!pick || shotMap[`${pick.r},${pick.c}`]) pick = randomUnshot();
+    if (!pick) return; // no moves left
+
+    const r = pick.r, c = pick.c;
+    const hit = isShipAt(state.boards[enemy].ships, r, c);
+    markShot(botTeam, enemy, r, c, hit);
+    state.turn = enemy;
+    if (isAllSunk(state.boards[enemy].ships)) { state.phase = 'gameover'; state.winner = botTeam; }
+    updateUiFromState();
+    broadcast();
   }
 
   // Ship placement utilities

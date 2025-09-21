@@ -33,6 +33,72 @@
   const createDeleteLineBtn = qs('#createDeleteLineBtn');
   const selectAllBtn = qs('#selectAllBtn');
 
+  // Help tooltip for Line info
+  const helpBtn = document.getElementById('lineInfoHelp');
+  const helpTip = document.getElementById('lineInfoHelpTip');
+  if (helpBtn && helpTip) {
+    let hoverTimeout;
+    let listening = false;
+
+    const repositionTip = () => {
+      if (helpTip.getAttribute('data-open') !== 'true') return;
+      const btnRect = helpBtn.getBoundingClientRect();
+      // Ensure we can measure the tooltip size
+      const prevDisplay = helpTip.style.display;
+      const prevVisibility = helpTip.style.visibility;
+      helpTip.style.visibility = 'hidden';
+      helpTip.style.display = 'block';
+      const tipWidth = helpTip.offsetWidth || 400;
+      const tipHeight = helpTip.offsetHeight || 60;
+      helpTip.style.display = prevDisplay;
+      helpTip.style.visibility = prevVisibility;
+
+      const margin = 8;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      const spaceRight = vw - btnRect.right - margin;
+      const spaceLeft = btnRect.left - margin;
+      let placeRight = true;
+      if (tipWidth > spaceRight && spaceLeft > spaceRight) {
+        placeRight = false;
+      }
+
+      let left = placeRight ? (btnRect.right + margin) : Math.max(margin, btnRect.left - margin - tipWidth);
+      left = Math.min(left, vw - tipWidth - margin);
+
+      let top = btnRect.top + btnRect.height / 2 - tipHeight / 2;
+      top = Math.max(margin, Math.min(top, vh - tipHeight - margin));
+
+      helpTip.style.left = `${Math.round(left)}px`;
+      helpTip.style.top = `${Math.round(top)}px`;
+    };
+
+    const openTip = () => {
+      helpTip.setAttribute('data-open', 'true');
+      helpBtn.setAttribute('aria-expanded', 'true');
+      repositionTip();
+      if (!listening) {
+        window.addEventListener('resize', repositionTip);
+        window.addEventListener('scroll', repositionTip, true);
+        listening = true;
+      }
+    };
+    const closeTip = () => {
+      helpTip.removeAttribute('data-open');
+      helpBtn.setAttribute('aria-expanded', 'false');
+    };
+    helpBtn.addEventListener('mouseenter', () => { clearTimeout(hoverTimeout); openTip(); });
+    helpBtn.addEventListener('mouseleave', () => { hoverTimeout = setTimeout(closeTip, 150); });
+    helpTip.addEventListener('mouseenter', () => { clearTimeout(hoverTimeout); });
+    helpTip.addEventListener('mouseleave', () => { hoverTimeout = setTimeout(closeTip, 150); });
+    helpBtn.addEventListener('focus', openTip);
+    helpBtn.addEventListener('blur', () => { hoverTimeout = setTimeout(closeTip, 150); });
+    helpBtn.addEventListener('click', (e) => { e.preventDefault(); const isOpen = helpTip.getAttribute('data-open') === 'true'; if (isOpen) { closeTip(); } else { openTip(); } });
+    document.addEventListener('click', (e) => { if (!helpBtn.contains(e.target) && !helpTip.contains(e.target)) closeTip(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTip(); });
+  }
+
   /** @type {Chart|null} */
   let chart = null;
 
@@ -135,11 +201,11 @@
           <strong>Series</strong>
           <label>Label: <input type="text" class="series-label" value="${id}" aria-label="Series label"></label>
           <label>Color: <input type="color" class="series-color" value="#1e88e5" aria-label="Series line color"></label>
-          <label>Thickness: <input type="number" class="series-width" min="1" max="10" step="1" value="2" aria-label="Series line thickness"></label>
+          <label>Thickness: <input type="number" class="series-width" min="1" max="10" step="1" value="2" aria-label="Series line thickness" style="width: 6ch;"></label>
         </div>
         <div>
           <button type="button" class="add-row">+ Row</button>
-          <button type="button" class="remove-series" title="Remove series">Remove</button>
+          <button type="button" class="remove-series" title="Remove Series">Remove Series</button>
         </div>
       </header>
       <table aria-label="Data table for ${id}">
@@ -669,7 +735,7 @@
       return;
     }
     if (selected.length !== 2) {
-      mathInfoLineContent.innerHTML = 'Select two data points to see slope and equation. Select 3+ to see best-fit line.';
+      mathInfoLineContent.innerHTML = '';
       refreshCreateDeleteBtn();
       return;
     }
