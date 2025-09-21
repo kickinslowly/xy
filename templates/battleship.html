@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Battleship Mode</title>
+{% extends "base.html" %}
+{% block title %}Battleship Mode{% endblock %}
+{% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <style>
     /* Battleship-specific styles kept local to avoid impacting other modes */
@@ -138,24 +135,19 @@
     .turn-banner.is-opponent { background: #fff3e0; color: #e65100; border-color: #ffe0b2; }
     .turn-banner.is-spectator { background: #f1f8e9; color: #2e7d32; border-color: #c5e1a5; }
   </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
 <header class="app-header" role="banner">
   <nav class="toolbar panels" aria-label="Battleship controls">
     <div class="panel" style="margin-left:auto;">
       <div class="group" role="group" aria-label="Collaboration status">
         <span id="presence" title="Number of users currently online in this room">• Offline</span>
-        <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
-        <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+        <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+        <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="group" role="group" aria-label="Mode switch">
-        <a href="/" class="btn-link">← Coordinate Plane</a>
-        <a href="{{ url_for('line_mode') }}" class="btn-link">Line Graph Mode</a>
-      </div>
-    </div>
 
     <div class="panel" id="lobbyPanel">
       <div class="group" role="group" aria-label="Lobby">
@@ -289,7 +281,9 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='bot_ai.js') }}"></script>
 <script src="{{ url_for('static', filename='battleship.js') }}"></script>
@@ -324,5 +318,5 @@
     }));
   })();
 </script>
-</body>
-</html>
+{% endblock %}
+

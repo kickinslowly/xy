@@ -1,21 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Interactive Coordinate Plane</title>
+{% extends "base.html" %}
+{% block title %}Interactive Coordinate Plane{% endblock %}
+{% block body_class %}mode-plane{% endblock %}
+{% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-</head>
-<body class="mode-plane">
+{% endblock %}
+
+{% block content %}
   <header class="app-header" role="banner">
     <nav class="toolbar panels" aria-label="Canvas controls">
-      <div class="panel" style="margin-left:auto;">
-        <div class="group" role="group" aria-label="Collaboration status">
+      <details class="panel" style="margin-left:auto;">
+        <summary>Session</summary>
+        <div class="group" role="group" aria-label="Session">
           <span id="presence" title="Number of users currently online in this document">• Offline</span>
-          <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
-          <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+          <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+          <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
         </div>
-      </div>
+      </details>
       <details class="panel">
         <summary>View</summary>
         <div class="group" role="group" aria-label="View controls">
@@ -36,7 +36,7 @@
         </div>
       </details>
 
-      <details class="panel" open>
+      <details class="panel">
         <summary>Vertices</summary>
         <div class="group" role="group" aria-label="Vertex settings">
           <label for="vertexColor">Vertex color:</label>
@@ -47,7 +47,7 @@
         </div>
       </details>
 
-      <details class="panel" open>
+      <details class="panel">
         <summary>Lines</summary>
         <div class="group" role="group" aria-label="Line settings">
           <label for="lineColor">Line color:</label>
@@ -63,7 +63,7 @@
         </div>
       </details>
 
-      <details class="panel" open>
+      <details class="panel">
         <summary>Images</summary>
         <div class="group" role="group" aria-label="Image tools">
           <button id="addImageBtn" type="button" title="Add an image to the plane">Add image</button>
@@ -71,7 +71,8 @@
         </div>
       </details>
 
-      <div class="panel">
+      <details class="panel">
+        <summary>Transformations</summary>
         <div class="group" role="group" aria-label="Transforms">
           <button id="reflectBtn" type="button" title="Reflect selected vertices across a line">Reflect</button>
           <button id="rotateBtn" type="button" title="Rotate selected vertices around a point">Rotate</button>
@@ -104,7 +105,7 @@
           <button id="translateApply" type="button" title="Apply numeric translation">Apply</button>
           <span id="translateHint" class="hint" style="display:none;">Click and drag to set translation vector, or type dx, dy and press Apply. Esc to cancel.</span>
         </div>
-      </div>
+      </details>
 
       <div class="panel">
         <div class="group" role="group" aria-label="Global actions">
@@ -126,15 +127,6 @@
   </header>
 
   <main class="main-wrap" role="main">
-    <aside class="modes-sidebar" aria-label="Modes">
-      <h3>Modes</h3>
-      <nav class="modes-list">
-        <a href="/" class="mode-link is-active">Coordinate Plane</a>
-        <a href="{{ url_for('line_mode') }}" class="mode-link">Line Graph</a>
-        <a href="{{ url_for('battleship') }}" class="mode-link">Battleship</a>
-        <a href="{{ url_for('meme_wars') }}" class="mode-link">Meme Wars</a>
-      </nav>
-    </aside>
     <div class="canvas-wrap">
       <canvas id="plane" width="1000" height="650" aria-label="Interactive coordinate plane" role="img"></canvas>
     </div>
@@ -194,9 +186,10 @@
       </div>
     </div>
   </div>
+{% endblock %}
 
+{% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
-</body>
-</html>
+{% endblock %}

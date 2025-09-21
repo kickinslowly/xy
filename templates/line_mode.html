@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Line Graph Mode</title>
+{% extends "base.html" %}
+{% block title %}Line Graph Mode{% endblock %}
+{% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <style>
     /* Minimal additions specific to line mode */
@@ -27,15 +24,16 @@
     .help-tooltip { position: fixed; z-index: 10000; background: #333; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 13px; min-width: 360px; max-width: min(80vw, 520px); line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,0.25); display: none; pointer-events: auto; }
     .help-tooltip[data-open="true"] { display: block; }
   </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
   <header class="app-header" role="banner">
     <nav class="toolbar panels controls" aria-label="Line graph controls">
       <div class="panel" style="margin-left:auto;">
         <div class="group" role="group" aria-label="Collaboration status">
           <span id="presence" title="Number of users currently online in this document">• Offline</span>
-          <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
-          <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+          <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+          <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
         </div>
       </div>
       <details class="panel" open>
@@ -116,7 +114,6 @@
       <div class="panel">
         <div class="group" style="display:flex; gap:10px; align-items:center;">
           <button id="exportPdfBtn" type="button">Export PDF</button>
-          <a href="/" style="text-decoration:none;">← Back to Main Mode</a>
         </div>
       </div>
     </nav>
@@ -160,11 +157,12 @@
       </div>
     </div>
   </div>
+{% endblock %}
 
+{% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="{{ url_for('static', filename='line_mode.js') }}?v=20250920"></script>
-</body>
-</html>
+{% endblock %}

@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meme Wars!!!</title>
+{% extends "base.html" %}
+{% block title %}Meme Wars!!!{% endblock %}
+{% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <style>
     /* Reuse Battleship layout/styles */
@@ -78,25 +75,19 @@
       .bs-sidebar { border-right: none; border-bottom: 1px solid #e0e0e0; }
     }
   </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
 <header class="app-header" role="banner">
   <nav class="toolbar panels" aria-label="Meme Wars controls">
     <div class="panel" style="margin-left:auto;">
       <div class="group" role="group" aria-label="Collaboration status">
         <span id="presence" title="Number of users currently online in this room">• Offline</span>
-        <button id="shareSessionBtn" type="button" title="Show and copy PIN to share">Share</button>
-        <button id="joinSessionBtn" type="button" title="Join another session by PIN">Join another session</button>
+        <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+        <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="group" role="group" aria-label="Mode switch">
-        <a href="/" class="btn-link">← Coordinate Plane</a>
-        <a href="{{ url_for('line_mode') }}" class="btn-link">Line Graph Mode</a>
-        <a href="{{ url_for('battleship') }}" class="btn-link">Battleship</a>
-      </div>
-    </div>
 
     <div class="panel" id="lobbyPanel">
       <div class="group" role="group" aria-label="Lobby">
@@ -224,7 +215,9 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
   window.AVAILABLE_MEME_IMAGES = {{ available_images|tojson|safe }};
 </script>
@@ -262,5 +255,4 @@
     }));
   })();
 </script>
-</body>
-</html>
+{% endblock %}
