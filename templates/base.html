@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>{% block title %}App{% endblock %}</title>
+    <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+      <div class="container header-inner">
+        <div class="brand">
+          <a href="{{ url_for('index') }}" class="brand-link">Your App</a>
+        </div>
+        <nav class="top-actions">
+          <div class="modes-nav" role="navigation" aria-label="Modes">
+            <a href="{{ url_for('index') }}" class="mode-link {% if request.path == url_for('index') %}is-active{% endif %}" {% if request.path == url_for('index') %}aria-current="page"{% endif %}>Coordinate Plane</a>
+            <a href="{{ url_for('line_mode') }}" class="mode-link {% if request.path == url_for('line_mode') %}is-active{% endif %}" {% if request.path == url_for('line_mode') %}aria-current="page"{% endif %}>Line Graph</a>
+            <a href="{{ url_for('battleship') }}" class="mode-link {% if request.path == url_for('battleship') %}is-active{% endif %}" {% if request.path == url_for('battleship') %}aria-current="page"{% endif %}>Battleship</a>
+            <a href="{{ url_for('meme_wars') }}" class="mode-link {% if request.path == url_for('meme_wars') %}is-active{% endif %}" {% if request.path == url_for('meme_wars') %}aria-current="page"{% endif %}>Meme Wars</a>
+          </div>
+          {% block top_actions %}{% endblock %}
+        </nav>
+      </div>
+    </header>
+
+    <main class="site-main container">
+      {% block page_heading %}{% endblock %}
+      <div class="actions" aria-label="page actions">
+        {% block actions %}{% endblock %}
+      </div>
+      <section class="content">
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <small>© {{ 2025 }} — Your Org</small>
+      </div>
+    </footer>
+
+    {% block extra_scripts %}{% endblock %}
+  </body>
+</html>
