@@ -271,6 +271,25 @@
   </div>
 </div>
 
+<!-- Share QR modal -->
+<div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Share session</h3>
+      <button id="closeQrModal" type="button" aria-label="Close">×</button>
+    </div>
+    <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
+      <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
+      <div style="min-width:260px; max-width:520px;">
+        <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
+        <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
+        <input id="qrLinkText" type="text" readonly style="width:100%;" />
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='bot_ai.js') }}"></script>
 <script src="{{ url_for('static', filename='battleship.js') }}"></script>

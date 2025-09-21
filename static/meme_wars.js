@@ -124,18 +124,40 @@
   }
 
   function setupShareJoinUi() {
+    function showQrModalFor(urlStr, pinVal) {
+      const modal = document.getElementById('qrModal');
+      if (!modal) return;
+      const img = document.getElementById('qrImage');
+      const link = document.getElementById('qrLinkText');
+      const pinText = document.getElementById('qrPinText');
+      const closeBtn = document.getElementById('closeQrModal');
+      const backdrop = modal.querySelector('.modal-backdrop');
+      if (img) img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=' + encodeURIComponent(urlStr);
+      if (link) { link.value = urlStr; try { link.focus(); link.select(); } catch(_){} }
+      if (pinText) pinText.textContent = 'PIN: ' + (pinVal || '');
+      function close(){ try { modal.hidden = true; modal.setAttribute('aria-hidden','true'); } catch(_){ } }
+      closeBtn?.addEventListener('click', close, { once: true });
+      backdrop?.addEventListener('click', close, { once: true });
+      try { modal.hidden = false; modal.setAttribute('aria-hidden','false'); } catch(_){ }
+    }
     if (shareBtn) shareBtn.addEventListener('click', async () => {
-      const txt = `Session PIN: ${window.currentSessionPin || ''}`;
+      const thePin = (window.currentSessionPin || '');
+      let copied = false;
       try {
         if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(window.currentSessionPin || '');
-          alert(`${txt}\n(Copied to clipboard)`);
-        } else {
-          window.prompt('Copy this PIN to share:', window.currentSessionPin || '');
+          await navigator.clipboard.writeText(thePin);
+          copied = true;
         }
-      } catch(_) {
-        window.prompt('Copy this PIN to share:', window.currentSessionPin || '');
-      }
+      } catch(_) {}
+      const urlObj = new URL(window.location.href);
+      urlObj.searchParams.set('pin', thePin);
+      showQrModalFor(urlObj.toString(), thePin);
+      try {
+        if (copied) {
+          const pinText = document.getElementById('qrPinText');
+          if (pinText) pinText.textContent = 'PIN: ' + thePin + ' (copied)';
+        }
+      } catch(_) {}
     });
     if (joinBtn) joinBtn.addEventListener('click', () => {
       const input = window.prompt('Enter the PIN to join another session:');

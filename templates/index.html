@@ -6,7 +6,7 @@
   <title>Interactive Coordinate Plane</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
-<body>
+<body class="mode-plane">
   <header class="app-header" role="banner">
     <nav class="toolbar panels" aria-label="Canvas controls">
       <div class="panel" style="margin-left:auto;">
@@ -116,13 +116,6 @@
         </div>
       </div>
 
-      <div class="panel">
-        <div class="group" role="group" aria-label="Mode switch">
-          <button type="button" id="goToLineMode" title="Switch to Line Graph Mode" onclick="window.location.href='{{ url_for('line_mode') }}'">Line Graph Mode</button>
-          <button type="button" id="goToBattleship" title="Switch to Battleship Mode" onclick="window.location.href='{{ url_for('battleship') }}'">Battleship Mode</button>
-          <button type="button" id="goToMemeWars" title="Switch to Meme Wars!!!" onclick="window.location.href='{{ url_for('meme_wars') }}'">Meme Wars!!!</button>
-        </div>
-      </div>
 
       <div class="panel">
         <div class="group" role="group" aria-label="Export">
@@ -133,6 +126,15 @@
   </header>
 
   <main class="main-wrap" role="main">
+    <aside class="modes-sidebar" aria-label="Modes">
+      <h3>Modes</h3>
+      <nav class="modes-list">
+        <a href="/" class="mode-link is-active">Coordinate Plane</a>
+        <a href="{{ url_for('line_mode') }}" class="mode-link">Line Graph</a>
+        <a href="{{ url_for('battleship') }}" class="mode-link">Battleship</a>
+        <a href="{{ url_for('meme_wars') }}" class="mode-link">Meme Wars</a>
+      </nav>
+    </aside>
     <div class="canvas-wrap">
       <canvas id="plane" width="1000" height="650" aria-label="Interactive coordinate plane" role="img"></canvas>
     </div>
@@ -170,6 +172,25 @@
         {% else %}
           <p class="hint" style="padding:8px 12px;">No images found in the static folder.</p>
         {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Share QR modal -->
+  <div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Share session</h3>
+        <button id="closeQrModal" type="button" aria-label="Close">×</button>
+      </div>
+      <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
+        <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
+        <div style="min-width:260px; max-width:520px;">
+          <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
+          <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
+          <input id="qrLinkText" type="text" readonly style="width:100%;" />
+        </div>
       </div>
     </div>
   </div>
