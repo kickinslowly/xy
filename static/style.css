@@ -493,3 +493,15 @@ input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px
   align-items: center;
   text-align: center;
 }
+
+/* Layout adjustments for left/right tool groups and smaller Session/View buttons */
+.toolbar.panels { width: 100%; }
+.toolbar-left { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-right: auto; }
+.toolbar-center { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: center; }
+/* Make buttons in Session and View 50% smaller */
+.panel-sm button { padding: 4px 7px; font-size: 0.5em; }
+
+
+/* Coordinate tooltip */
+.coord-tooltip { position: fixed; z-index: 1000; background: #111; color: #fff; padding: 6px 10px; border-radius: 10px; font-size: 12px; box-shadow: 0 8px 18px rgba(0,0,0,0.2); pointer-events: none; opacity: 0; transform: translate(10px, -10px) scale(0.98); transition: opacity .12s ease, transform .12s ease; white-space: nowrap; }
+.coord-tooltip.show { opacity: 1; transform: translate(12px, -12px) scale(1); }

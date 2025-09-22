@@ -4,6 +4,25 @@
 
   // UI elements
   const zoomInBtn = document.getElementById('zoomIn');
+  
+  // Coordinate tooltip element
+  const coordTooltip = document.getElementById('coordTooltip');
+  let coordTooltipTimer = null;
+  function showCoordTooltipAtClient(clientX, clientY, worldPoint) {
+    if (!coordTooltip || !worldPoint) return;
+    const txt = `(${formatNumber(worldPoint.x)}, ${formatNumber(worldPoint.y)})`;
+    coordTooltip.textContent = txt;
+    coordTooltip.style.left = `${Math.round(clientX)}px`;
+    coordTooltip.style.top = `${Math.round(clientY)}px`;
+    coordTooltip.hidden = false;
+    // trigger show animation
+    coordTooltip.classList.add('show');
+    if (coordTooltipTimer) clearTimeout(coordTooltipTimer);
+    coordTooltipTimer = setTimeout(() => {
+      coordTooltip.classList.remove('show');
+      coordTooltip.hidden = true;
+    }, 1400);
+  }
   const zoomOutBtn = document.getElementById('zoomOut');
   const ppuInput = document.getElementById('ppu');
   const gridStepSelect = document.getElementById('gridStep');
@@ -19,6 +38,12 @@
   const createInfiniteLineBtn = document.getElementById('createInfiniteLine');
   const clearLinesBtn = document.getElementById('clearLines');
   const closeLoopChk = document.getElementById('closeLoop');
+
+  // y = mx + b tool elements
+  const ymbSlopeInput = document.getElementById('ymbSlope');
+  const ymbInterceptInput = document.getElementById('ymbIntercept');
+  const ymbAddBtn = document.getElementById('ymbAddBtn');
+  const ymbEqPreview = document.getElementById('ymbEqPreview');
 
   const clearAllBtn = document.getElementById('clearAll');
   const undoBtn = document.getElementById('undoBtn');
@@ -446,6 +471,52 @@
     return { str: formatFraction(num, den), num, den };
   }
 
+  // y = mx + b helpers
+  function parseSlopeInput(val) {
+    if (val == null) return NaN;
+    const s = String(val).trim();
+    if (!s) return NaN;
+    const m = s.match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+    if (m) {
+      const num = parseInt(m[1], 10);
+      const den = parseInt(m[2], 10);
+      if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return NaN;
+      return num / den;
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  function formatEquationFromMB(m, b) {
+    if (!Number.isFinite(m) || !Number.isFinite(b)) return '';
+    const mRounded = round2(m);
+    const bRounded = round2(b);
+    // y = b (horizontal)
+    if (Math.abs(mRounded) < 1e-12) {
+      const bStr = formatIntercept(bRounded);
+      return `y = ${bStr}`;
+    }
+    // slope part
+    const mFrac = toFractionApprox(mRounded);
+    let mStr = formatFraction(mFrac.num, mFrac.den);
+    if (mStr === '1') mStr = 'x';
+    else if (mStr === '-1') mStr = '−x';
+    else mStr = `${mStr}x`;
+    // intercept part
+    if (Math.abs(bRounded) < 1e-12) {
+      return `y = ${mStr}`;
+    }
+    const sign = bRounded >= 0 ? '+' : '−';
+    const absBStr = formatIntercept(Math.abs(bRounded));
+    return `y = ${mStr} ${sign} ${absBStr}`;
+  }
+  function equationLabelForLine(il) {
+    if (!il) return '';
+    if (il.vertical) {
+      return `x = ${formatNumber(il.x)}`;
+    }
+    return formatEquationFromMB(il.m, il.b);
+  }
+
   // Label helpers
   const BASE_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   function defaultLabelForId(id) {
@@ -469,9 +540,24 @@
   }
 
   function drawVertices() {
+    const now = performance.now();
     for (const v of vertices) {
       const p = worldToScreen(v);
-      const r = v.size;
+      let r = v.size;
+      let t = null;
+      if (v.pulseStart != null && v.pulseDur != null) {
+        t = clamp((now - v.pulseStart) / v.pulseDur, 0, 1);
+        if (t >= 1) {
+          v.pulseStart = undefined;
+          v.pulseDur = undefined;
+          v.pulseColor = undefined;
+          t = null;
+        } else {
+          const s = 1 + 0.35 * Math.sin(t * Math.PI); // bounce scale
+          r = v.size * s;
+        }
+      }
+
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fillStyle = v.color;
@@ -480,6 +566,19 @@
       ctx.lineWidth = 1;
       ctx.strokeStyle = '#33333310';
       ctx.stroke();
+
+      // pulse ring / flash
+      if (t != null && t < 1) {
+        ctx.save();
+        ctx.beginPath();
+        const ringR = r + 4 + 6 * (1 - t);
+        ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = v.pulseColor || '#ffd600';
+        ctx.globalAlpha = 0.6 * (1 - t);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+      }
 
       if (v.selected) {
         ctx.beginPath();
@@ -562,7 +661,7 @@
         const pb = worldToScreen(b);
         const mx = (pa.x + pb.x) / 2;
         const my = (pa.y + pb.y) / 2;
-        const label = `Line ${il.lineId != null ? il.lineId : (infiniteLines.indexOf(il) + 1)}`;
+        const label = (il.equationLabel && String(il.equationLabel).trim()) || equationLabelForLine(il);
         ctx.save();
         ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
         ctx.textAlign = 'center';
@@ -1757,6 +1856,38 @@
   let groupDragStartPositions = null; // Map of vertexId -> {x,y}
   let dragStartPos = null; // starting position of the dragged vertex
 
+  // --- Vertex pulse animation helpers ---
+  let vertexAnimRaf = null;
+  function isAnyVertexPulsing(nowTs) {
+    const now = nowTs ?? performance.now();
+    for (const v of vertices) {
+      if (v && v.pulseStart != null && v.pulseDur != null) {
+        if ((now - v.pulseStart) < v.pulseDur) return true;
+      }
+    }
+    return false;
+  }
+  function startVertexAnimLoop() {
+    if (vertexAnimRaf) return;
+    const step = () => {
+      const now = performance.now();
+      draw();
+      if (isAnyVertexPulsing(now)) {
+        vertexAnimRaf = requestAnimationFrame(step);
+      } else {
+        vertexAnimRaf = null;
+      }
+    };
+    vertexAnimRaf = requestAnimationFrame(step);
+  }
+  function triggerVertexPulse(v, color) {
+    if (!v) return;
+    v.pulseStart = performance.now();
+    v.pulseDur = 500; // ms
+    if (color) v.pulseColor = color;
+    startVertexAnimLoop();
+  }
+
   // Image dragging state
   let isDraggingImage = false;
   let dragImage = null;
@@ -2435,6 +2566,9 @@
         hit.selected = true;
         hit.selectedAt = selectionCounter++;
       }
+      // Show coordinates near cursor and animate the point
+      try { showCoordTooltipAtClient(evt.clientX, evt.clientY, hit); } catch {}
+      triggerVertexPulse(hit, '#ffd600');
       draw();
       return;
     }
@@ -2479,6 +2613,9 @@
     }
 
     vertices.push(vtx);
+    // Show coordinates near cursor and animate the new point
+    try { showCoordTooltipAtClient(evt.clientX, evt.clientY, ws); } catch {}
+    triggerVertexPulse(vtx, '#ffd600');
     draw();
     pushHistory();
   });
@@ -2690,6 +2827,40 @@
       draw();
       pushHistory();
     });
+  }
+
+  // y = mx + b: add infinite line from inputs
+  if (ymbAddBtn) {
+    const updateYmbPreview = () => {
+      const m = parseSlopeInput(ymbSlopeInput ? ymbSlopeInput.value : '');
+      const b = ymbInterceptInput ? Number(ymbInterceptInput.value) : NaN;
+      if (Number.isFinite(m) && Number.isFinite(b)) {
+        const eq = formatEquationFromMB(m, b);
+        if (ymbEqPreview) ymbEqPreview.textContent = eq;
+      } else {
+        if (ymbEqPreview) ymbEqPreview.textContent = '';
+      }
+    };
+    if (ymbSlopeInput) ymbSlopeInput.addEventListener('input', updateYmbPreview);
+    if (ymbInterceptInput) ymbInterceptInput.addEventListener('input', updateYmbPreview);
+    ymbAddBtn.addEventListener('click', () => {
+      const m = parseSlopeInput(ymbSlopeInput ? ymbSlopeInput.value : '');
+      const bVal = ymbInterceptInput ? Number(ymbInterceptInput.value) : NaN;
+      if (!Number.isFinite(m) || !Number.isFinite(bVal)) {
+        alert('Please enter a valid slope (fraction like 2/3) and a numeric y-intercept.');
+        return;
+      }
+      const color = lineColorInput.value;
+      const width = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
+      const lineId = nextInfiniteLineId++;
+      const eqLabel = formatEquationFromMB(m, bVal);
+      infiniteLines.push({ lineId, m, b: bVal, color, width, selected: true, equationLabel: eqLabel });
+      draw();
+      pushHistory();
+      updateYmbPreview();
+    });
+    // init preview
+    updateYmbPreview();
   }
 
   // Delete selected button
@@ -3369,6 +3540,26 @@
     } else {
       setPresence(0, false);
     }
+  })();
+
+  // Ensure only one toolbar panel is open at a time (accordion behavior) in plane mode
+  (function setupSingleOpenToolbarPanels(){
+    try {
+      if (!document.body.classList.contains('mode-plane')) return;
+      const toolbar = document.querySelector('.toolbar.panels');
+      if (!toolbar) return;
+      const allPanels = Array.from(toolbar.querySelectorAll('details.panel'));
+      allPanels.forEach((d) => {
+        d.addEventListener('toggle', () => {
+          if (!d.open) return;
+          for (const other of allPanels) {
+            if (other !== d && other.open) {
+              other.open = false;
+            }
+          }
+        });
+      });
+    } catch(_) {}
   })();
 
   // Clear selection when clicking blank space outside the coordinate plane (canvas)
