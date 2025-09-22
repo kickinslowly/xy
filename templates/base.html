@@ -14,7 +14,7 @@
     <header class="site-header">
       <div class="container header-inner">
         <div class="brand">
-          <a href="{{ url_for('index') }}" class="brand-link">Your App</a>
+          <a href="{{ url_for('index') }}" class="brand-link">Mr. A's Math Tools</a>
         </div>
         <nav class="top-actions">
           <div class="modes-nav" role="navigation" aria-label="Modes">
@@ -28,19 +28,13 @@
       </div>
     </header>
 
-    <main class="site-main container">
-      {% block page_heading %}{% endblock %}
-      <div class="actions" aria-label="page actions">
-        {% block actions %}{% endblock %}
-      </div>
-      <section class="content">
-        {% block content %}{% endblock %}
-      </section>
+    <main class="page">
+      {% block content %}{% endblock %}
     </main>
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <small>© {{ 2025 }} — Your Org</small>
+        <small>© 2025 — Aaron Allen</small>
       </div>
     </footer>
 

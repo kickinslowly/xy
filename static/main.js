@@ -68,6 +68,8 @@
 
   // origin (0,0) position on canvas in pixels
   let origin = { x: canvas.width / 2, y: canvas.height / 2 };
+  // One-time centering after initial layout sizing
+  let didInitialCenter = false;
 
   // Data models
   let nextVertexId = 1;
@@ -199,17 +201,23 @@
   // Resize handler to match canvas backing store to its CSS size
   function fitCanvasToDisplay() {
     const rect = canvas.getBoundingClientRect();
-    const prevCenterWorld = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
-    canvas.width = Math.max(300, Math.floor(rect.width));
-    canvas.height = Math.max(300, Math.floor(rect.height));
-    // Keep origin so that world center remains at canvas center after resize
-    const newRect = { width: canvas.width, height: canvas.height };
-    const newCenterScreen = { x: newRect.width / 2, y: newRect.height / 2 };
-    const worldCenterScreen = worldToScreen(prevCenterWorld);
-    const dx = newCenterScreen.x - worldCenterScreen.x;
-    const dy = newCenterScreen.y - worldCenterScreen.y;
-    origin.x += dx;
-    origin.y += dy;
+    if (!didInitialCenter) {
+      canvas.width = Math.max(300, Math.floor(rect.width));
+      canvas.height = Math.max(300, Math.floor(rect.height));
+      // Center the origin on first layout so axes are centered on screen
+      origin.x = canvas.width / 2;
+      origin.y = canvas.height / 2;
+      didInitialCenter = true;
+    } else {
+      // Preserve the world point currently at the visual center
+      const prevCenterWorld = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
+      canvas.width = Math.max(300, Math.floor(rect.width));
+      canvas.height = Math.max(300, Math.floor(rect.height));
+      const newCenterScreen = { x: canvas.width / 2, y: canvas.height / 2 };
+      const worldCenterScreen = worldToScreen(prevCenterWorld);
+      origin.x += newCenterScreen.x - worldCenterScreen.x;
+      origin.y += newCenterScreen.y - worldCenterScreen.y;
+    }
     draw();
   }
 
@@ -1878,6 +1886,7 @@
         } else {
           imageAction.normals = computeEdgeNormals(cornersW);
         }
+        suppressNextClick = true;
         evt.preventDefault();
         return;
       }
@@ -1932,6 +1941,7 @@
         // select this image and its vertices exclusively
         selectImageExclusively(hitIm);
         draw();
+        suppressNextClick = true;
         evt.preventDefault();
         return;
       }
@@ -2860,6 +2870,8 @@
   });
 
   clearAllBtn.addEventListener('click', () => {
+    const ok = window.confirm('Delete everything on the plane? This cannot be undone.');
+    if (!ok) return;
     vertices.length = 0;
     lines.length = 0;
     infiniteLines.length = 0;

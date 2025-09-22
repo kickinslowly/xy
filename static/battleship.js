@@ -10,6 +10,7 @@
   const btnJoinB = qs('#joinB');
   const btnStart = qs('#startBtn');
   const phaseText = qs('#phaseText');
+  const lobbyPanel = qs('#lobbyPanel');
 
   const roomPinEl = qs('#roomPin');
   const turnPill = qs('#turnPill');
@@ -47,6 +48,11 @@
   // Turn overlay and cues
   const turnOverlay = qs('#turnOverlay');
   const turnSubText = qs('#turnSubText');
+  const countdownOverlay = qs('#countdownOverlay');
+  const countdownBigNumEl = qs('#countdownBigNum');
+  const countdownTurnTextEl = qs('#countdownTurnText');
+  let countdownOverlayHideTimer = null;
+  let countdownFlashUntil = 0;
   const baseTitle = document.title;
   let lastTurnWasMine = false;
 
@@ -459,6 +465,11 @@
     else if (state.phase === 'playing') phaseText.textContent = 'Playing';
     else if (state.phase === 'gameover') phaseText.textContent = 'Game over';
 
+    // Hide lobby bar once the game is starting/started
+    if (lobbyPanel) {
+      lobbyPanel.style.display = (state.phase === 'lobby') ? '' : 'none';
+    }
+
     // Turn pill: make it very obvious
     turnPill.classList.remove('your-turn', 'waiting');
     if (myTeam && state.turn === myTeam) {
@@ -516,7 +527,7 @@
     try { if (singlePlayerToggle) singlePlayerToggle.checked = !!(state.bot && state.bot.enabled); } catch(_){ }
     if (state.bot && state.bot.enabled) { try { ensureBotPresence(true); } catch(_){ } }
 
-    // Countdown UI
+    // Countdown UI (overlay)
     if (state.phase === 'countdown' && state.countdownEndsAt) {
       countdownPill.hidden = false;
       // Give immediate button feedback during countdown
@@ -526,20 +537,48 @@
       const updateCountdown = () => {
         const left = (state.countdownEndsAt || 0) - Date.now();
         const s = Math.max(0, Math.ceil(left / 1000));
+        try {
+          if (countdownOverlay) countdownOverlay.classList.add('show');
+          if (countdownBigNumEl) { countdownBigNumEl.textContent = String(s || 0); countdownBigNumEl.style.display = ''; }
+          if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+        } catch(_){}
         countdownNum.textContent = String(s);
         if (left <= 0 && state.phase === 'countdown') {
           clearInterval(countdownTimer);
+          // Switch to playing, then flash "Your Turn"/"Opponent's Turn"
           state.phase = 'playing';
+          let msg = 'Team ' + (state.turn || '—') + "'s Turn";
+          if (myTeam) msg = (state.turn === myTeam) ? 'YOUR TURN' : "OPPONENT'S TURN";
+          try {
+            if (countdownOverlay) countdownOverlay.classList.add('show');
+            if (countdownBigNumEl) countdownBigNumEl.style.display = 'none';
+            if (countdownTurnTextEl) { countdownTurnTextEl.textContent = msg; countdownTurnTextEl.style.display = ''; }
+          } catch(_){}
+          countdownFlashUntil = Date.now() + 1300;
+          try { clearTimeout(countdownOverlayHideTimer); } catch(_){}
+          countdownOverlayHideTimer = setTimeout(() => {
+            try {
+              countdownOverlay?.classList.remove('show');
+              if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+            } catch(_){}
+          }, 1300);
           // Immediately refresh local UI so turn indicators and bot scheduling update without needing server echo
           updateUiFromState();
           broadcast();
         }
       };
       updateCountdown();
-      countdownTimer = setInterval(updateCountdown, 250);
+      countdownTimer = setInterval(updateCountdown, 200);
     } else {
       countdownPill.hidden = true;
       clearInterval(countdownTimer);
+      // Keep overlay visible briefly if we just switched to playing and are flashing turn text
+      if (!(countdownFlashUntil && Date.now() < countdownFlashUntil)) {
+        try {
+          countdownOverlay?.classList.remove('show');
+          if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+        } catch(_){}
+      }
     }
 
     // Overlays

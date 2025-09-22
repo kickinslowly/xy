@@ -6,9 +6,9 @@
 {% endblock %}
 
 {% block content %}
-  <header class="app-header" role="banner">
+  <header class="app-header full-bleed" role="banner">
     <nav class="toolbar panels" aria-label="Canvas controls">
-      <details class="panel" style="margin-left:auto;">
+      <details class="panel">
         <summary>Session</summary>
         <div class="group" role="group" aria-label="Session">
           <span id="presence" title="Number of users currently online in this document">• Offline</span>
@@ -37,7 +37,7 @@
       </details>
 
       <details class="panel">
-        <summary>Vertices</summary>
+        <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>Vertices</summary>
         <div class="group" role="group" aria-label="Vertex settings">
           <label for="vertexColor">Vertex color:</label>
           <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" />
@@ -48,7 +48,7 @@
       </details>
 
       <details class="panel">
-        <summary>Lines</summary>
+        <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Lines</summary>
         <div class="group" role="group" aria-label="Line settings">
           <label for="lineColor">Line color:</label>
           <input id="lineColor" type="color" value="#1e88e5" aria-label="Line color" />
@@ -64,7 +64,7 @@
       </details>
 
       <details class="panel">
-        <summary>Images</summary>
+        <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" fill="none" stroke-width="2"/><circle cx="10" cy="11" r="2" fill="currentColor"/><path d="M6 17l4-4 3 3 5-5 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Images</summary>
         <div class="group" role="group" aria-label="Image tools">
           <button id="addImageBtn" type="button" title="Add an image to the plane">Add image</button>
           <button id="clearImages" type="button" title="Remove all images">Clear images</button>
@@ -107,26 +107,24 @@
         </div>
       </details>
 
-      <div class="panel">
-        <div class="group" role="group" aria-label="Global actions">
-          <button id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
-          <button id="redoBtn" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
-          <button id="deleteSelected" type="button" title="Delete selected vertices/lines/images">Delete selected</button>
-          <button id="clearSelection" type="button" title="Clear selection">Clear selection</button>
-          <button id="clearAll" type="button" title="Remove all content">Clear all</button>
-        </div>
-      </div>
-
-
-      <div class="panel">
-        <div class="group" role="group" aria-label="Export">
-          <button id="exportPdfBtn" type="button" title="Export current view as PDF">Export PDF</button>
-        </div>
-      </div>
     </nav>
   </header>
 
-  <main class="main-wrap" role="main">
+  <main class="main-wrap full-bleed" role="main">
+    <aside class="sidebar sidebar-left" aria-label="Quick actions">
+      <div class="sidebar-header">
+        <h3>Actions</h3>
+        <small>Undo/redo, clear, export</small>
+      </div>
+      <div class="action-buttons" style="padding: 8px 12px;">
+        <button id="undoBtn" class="btn-outline" type="button" title="Undo (Ctrl+Z)" style="width:100%;">↶ Undo</button>
+        <button id="redoBtn" class="btn-outline" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)" style="width:100%;">↷ Redo</button>
+        <button id="deleteSelected" class="btn-neutral" type="button" title="Delete selected vertices/lines/images" style="width:100%;">🗑️ Delete selected</button>
+        <button id="clearSelection" class="btn-neutral" type="button" title="Clear selection" style="width:100%;">✨ Clear selection</button>
+        <button id="clearAll" class="btn-danger btn-sm" type="button" title="Remove all content" style="width:100%;">Delete all</button>
+        <button id="exportPdfBtn" class="btn-neutral" type="button" title="Export current view as PDF" style="width:100%;">📄 Export PDF</button>
+      </div>
+    </aside>
     <div class="canvas-wrap">
       <canvas id="plane" width="1000" height="650" aria-label="Interactive coordinate plane" role="img"></canvas>
     </div>

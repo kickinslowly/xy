@@ -1,5 +1,6 @@
 /* ========== Design Tokens (edit these to your current palette) ========== */
 :root {
+  color-scheme: dark;
   /* CORE (dark-leaning) */
   --bg:           #0f1115;  /* app background */
   --surface:      #151924;  /* panel/card surface */
@@ -27,6 +28,11 @@
   --gap:         14px;
   --gap-sm:      10px;
   --gap-lg:      24px;
+
+  /* Hybrid layout scales */
+  --site-max: 1440px;                /* overall canvas cap */
+  --content-max: 72ch;               /* readable text width */
+  --gutter: clamp(12px, 2.5vw, 24px);/* responsive side padding */
 }
 
 /* Optional light preference (keeps palette but flips contrast) */
@@ -63,9 +69,9 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .container {
-  width: min(1100px, 92vw);
-  margin: 0 auto;
-  padding: 14px;
+  max-width: min(var(--site-max), 100%);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
 }
 
 /* Accessible focus styles */
@@ -226,8 +232,69 @@ a:hover { text-decoration: underline; }
 .footer-inner { padding: 16px 0; color: var(--text-muted); }
 
 
-/* Global modes nav (subtle) */
-.modes-nav { display:flex; align-items:center; gap: 8px; color: var(--text-muted); }
-.modes-nav .mode-link { display:inline-block; padding: 6px 10px; border-radius: 999px; color: var(--text-muted); border: 1px solid transparent; font-weight: 700; font-size: 14px; }
-.modes-nav .mode-link:hover { color: var(--text); background: rgba(255,255,255,0.04); text-decoration:none; }
-.modes-nav .mode-link.is-active { color: var(--text); border-color: var(--border); background: rgba(255,255,255,0.03); }
+/* Global modes nav (secondary, grouped) */
+.modes-nav {
+  display:flex; align-items:center; gap: 8px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 6px;
+  border-radius: 12px;
+}
+.modes-nav .mode-link {
+  display:inline-block; padding: 6px 10px; border-radius: 999px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  background: transparent;
+  font-weight: 700; font-size: 14px;
+  transition: background .15s ease, color .15s ease, transform .02s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.modes-nav .mode-link:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.04);
+  text-decoration:none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.modes-nav .mode-link:active { transform: translateY(0); }
+/* Secondary active = ghost/outline (less emphasis than primary) */
+.modes-nav .mode-link.is-active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* Hybrid layout additions */
+html, body { height: 100%; }
+
+main.page{
+  display:grid;
+  grid-template-columns:
+    minmax(var(--gutter), 1fr)
+    minmax(0, var(--site-max))
+    minmax(var(--gutter), 1fr);
+}
+
+main.page > *{ grid-column: 2; }
+
+/* Constrain text-heavy blocks */
+.prose{ max-width: var(--content-max); }
+
+/* Full-bleed escape hatch for wide content */
+.full-bleed{ grid-column: 1 / -1; }
+
+/* Tables: wide + sticky header for plain tables */
+.table-wrap{ grid-column:1 / -1; overflow:auto; }
+
+/* If the page uses raw <table>, give it sensible defaults */
+table{ width:100%; border-collapse:collapse; }
+th,td{ padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); }
+thead th{ position:sticky; top:0; background:var(--surface); z-index:1; }
+
+/* Forms baseline */
+input,select,button,textarea{ font:inherit; padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:#0f141b; color:var(--text); }
+button{ background:var(--accent); color:#001428; border:none; cursor:pointer; }
+button:hover{ filter:brightness(1.1); }
+
+/* XL screens: keep it classy, not endless */
+@media (min-width: 1800px){
+  :root{ --site-max: 1600px; }
+}

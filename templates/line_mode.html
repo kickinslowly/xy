@@ -27,7 +27,7 @@
 {% endblock %}
 
 {% block content %}
-  <header class="app-header" role="banner">
+  <header class="app-header full-bleed" role="banner">
     <nav class="toolbar panels controls" aria-label="Line graph controls">
       <div class="panel" style="margin-left:auto;">
         <div class="group" role="group" aria-label="Collaboration status">
@@ -113,13 +113,13 @@
 
       <div class="panel">
         <div class="group" style="display:flex; gap:10px; align-items:center;">
-          <button id="exportPdfBtn" type="button">Export PDF</button>
+          <button id="exportPdfBtn" class="btn-light" type="button">📄 Export PDF</button>
         </div>
       </div>
     </nav>
   </header>
 
-  <main class="main-wrap">
+  <main class="main-wrap full-bleed">
     <aside class="sidebar" aria-label="Data tables">
       <div id="mathInfoLine" class="series-card" style="margin: 8px 12px;">
         <div class="line-info-header"><strong>Line info</strong> <button id="lineInfoHelp" type="button" class="help-icon" aria-label="Tips" aria-haspopup="dialog" aria-expanded="false" aria-describedby="lineInfoHelpTip">?</button><div id="lineInfoHelpTip" class="help-tooltip" role="tooltip">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div></div>

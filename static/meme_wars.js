@@ -8,6 +8,7 @@
 
   const btnStart = qs('#startBtn');
   const phaseText = qs('#phaseText');
+  const lobbyPanel = qs('#lobbyPanel');
 
   const roomPinEl = qs('#roomPin');
   const turnPill = qs('#turnPill');
@@ -37,6 +38,19 @@
   const winnerText = qs('#winnerText');
   const playAgainBtn = qs('#playAgainBtn');
   const okLoserBtn = qs('#okLoserBtn');
+
+  // Countdown overlay elements
+  const countdownOverlay = qs('#countdownOverlay');
+  const countdownBigNumEl = qs('#countdownBigNum');
+  const countdownTurnTextEl = qs('#countdownTurnText');
+  let countdownOverlayHideTimer = null;
+  let countdownFlashUntil = 0;
+
+  // Captured meme popup
+  const captureOverlay = qs('#captureOverlay');
+  const captureMemeImg = qs('#captureMemeImg');
+  let captureHideTimer = null;
+  let mySunkIds = null; // Set of meme ids already acknowledged as sunk on my board
 
   const turnBannerEl = qs('#turnBanner');
 
@@ -459,7 +473,12 @@
     else if (state.phase === 'playing') phaseText.textContent = 'Playing';
     else if (state.phase === 'gameover') phaseText.textContent = 'Game over';
 
-    // Countdown handling
+    // Hide lobby bar once the game is starting/started
+    if (lobbyPanel) {
+      lobbyPanel.style.display = (state.phase === 'lobby') ? '' : 'none';
+    }
+
+    // Countdown handling (overlay)
     if (state.phase === 'countdown' && state.countdownEndsAt) {
       countdownPill.hidden = false;
       if (btnStart) { btnStart.disabled = true; btnStart.textContent = 'Starting…'; }
@@ -467,12 +486,44 @@
       const tick = () => {
         const left = (state.countdownEndsAt || 0) - Date.now();
         const s = Math.max(0, Math.ceil(left/1000));
+        try {
+          if (countdownOverlay) countdownOverlay.classList.add('show');
+          if (countdownBigNumEl) { countdownBigNumEl.textContent = String(s || 0); countdownBigNumEl.style.display = ''; }
+          if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+        } catch(_){}
         countdownNum.textContent = String(s);
-        if (left <= 0 && state.phase === 'countdown') { clearInterval(countdownTimer); state.phase = 'playing'; updateUiFromState(); broadcast(); }
+        if (left <= 0 && state.phase === 'countdown') {
+          clearInterval(countdownTimer);
+          state.phase = 'playing';
+          let msg = 'Team ' + (state.turn || '—') + "'s Turn";
+          if (myTeam) msg = (state.turn === myTeam) ? 'YOUR TURN' : "OPPONENT'S TURN";
+          try {
+            if (countdownOverlay) countdownOverlay.classList.add('show');
+            if (countdownBigNumEl) countdownBigNumEl.style.display = 'none';
+            if (countdownTurnTextEl) { countdownTurnTextEl.textContent = msg; countdownTurnTextEl.style.display = ''; }
+          } catch(_){}
+          countdownFlashUntil = Date.now() + 1300;
+          try { clearTimeout(countdownOverlayHideTimer); } catch(_){}
+          countdownOverlayHideTimer = setTimeout(() => {
+            try {
+              countdownOverlay?.classList.remove('show');
+              if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+            } catch(_){}
+          }, 1300);
+          updateUiFromState();
+          broadcast();
+        }
       };
       tick(); countdownTimer = setInterval(tick, 200);
     } else {
       countdownPill.hidden = true;
+      clearInterval(countdownTimer);
+      if (!(countdownFlashUntil && Date.now() < countdownFlashUntil)) {
+        try {
+          countdownOverlay?.classList.remove('show');
+          if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
+        } catch(_){}
+      }
     }
 
     // Turn pill
@@ -508,6 +559,36 @@
     // Render boards and stats
     renderBoards();
     renderStats();
+
+    // Capture popup for newly sunk memes on your board
+    try {
+      if (state.phase === 'playing' && myTeam) {
+        const mine = state.boards[myTeam] || {};
+        const memes = mine.memes || [];
+        const hits = mine.hits || {};
+        const currentSunk = new Set(memes.filter(m => isMemeSunk(m, hits)).map(m => m.id || JSON.stringify(m.coords)));
+        if (mySunkIds === null) {
+          // First run for this phase: initialize without showing
+          mySunkIds = new Set(currentSunk);
+        } else {
+          let newMeme = null;
+          for (const m of memes) {
+            const id = m.id || JSON.stringify(m.coords);
+            if (isMemeSunk(m, hits) && !mySunkIds.has(id)) { newMeme = m; break; }
+          }
+          if (newMeme) {
+            mySunkIds.add(newMeme.id || JSON.stringify(newMeme.coords));
+            showCaptureOverlay(newMeme.url);
+          } else {
+            // Keep in sync if set drifted
+            mySunkIds = currentSunk;
+          }
+        }
+      } else {
+        // Reset tracking when not actively playing or not on a team
+        mySunkIds = null;
+      }
+    } catch (_) { /* non-blocking */ }
 
     // Schedule bot move if it's bot's turn
     try { maybeTriggerBotMove(); } catch(_){ }
@@ -685,5 +766,18 @@
       if (content) el.innerHTML = `<span class="ping">${content}</span>`;
       setTimeout(() => { try { el.classList.remove('ping'); } catch(_){} }, 300);
     } catch(_) {}
+  }
+
+  // Show 1s popup with the captured meme image
+  function showCaptureOverlay(url) {
+    if (!captureOverlay || !captureMemeImg) return;
+    try {
+      captureMemeImg.src = cssUrl(url);
+      captureOverlay.classList.add('show');
+      try { clearTimeout(captureHideTimer); } catch(_){ }
+      captureHideTimer = setTimeout(() => {
+        try { captureOverlay.classList.remove('show'); } catch(_){ }
+      }, 1000);
+    } catch(_){ }
   }
 })();

@@ -61,9 +61,20 @@
     .grid-card { display: flex; flex-direction: column; height: 100%; }
     .grid-card .board-wrap { flex: 1; display: grid; place-items: center; padding: 8px; }
 
-    .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 1000; background: rgba(0,0,0,0.6); }
+    .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 2000; background: rgba(0,0,0,0.6); }
     .overlay.show { display: flex; }
     .overlay .panel { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e0e0e0; width: min(92vw, 520px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+
+    /* Countdown popup specifics */
+    #countdownOverlay .panel { background: radial-gradient(ellipse at top, #ffffff, #fff8f0 60%); }
+    #countdownBigNum { font-size: clamp(64px, 18vmin, 260px); font-weight: 900; line-height: 1; margin: 0; letter-spacing: 2px; color: #111; }
+    #countdownTurnText { font-size: clamp(28px, 6vmin, 64px); margin: 6px 0 0; letter-spacing: 1px; }
+
+    /* Captured meme popup specifics */
+    #captureOverlay { z-index: 2200; }
+    #captureOverlay .panel { background: radial-gradient(ellipse at top, #fff0f6, #ffffff 60%); }
+    #captureTitle { font-size: clamp(24px, 5vmin, 42px); margin: 0 0 8px; font-weight: 900; letter-spacing: 1px; }
+    #captureMemeImg { max-width: min(72vw, 420px); max-height: min(40vh, 420px); width: auto; height: auto; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
 
     .turn-banner { display: block; padding: 10px 12px; border-radius: 10px; font-weight: 800; letter-spacing: 0.4px; text-align: center; background: #f5f5f5; color: #444; border: 1px solid #e0e0e0; }
     .turn-banner.is-you { background: #e3f2fd; color: #0d47a1; border-color: #bbdefb; }
@@ -78,7 +89,7 @@
 {% endblock %}
 
 {% block content %}
-<header class="app-header" role="banner">
+<header class="app-header full-bleed" role="banner">
   <nav class="toolbar panels" aria-label="Meme Wars controls">
     <div class="panel" style="margin-left:auto;">
       <div class="group" role="group" aria-label="Collaboration status">
@@ -102,7 +113,7 @@
   </nav>
 </header>
 
-<main class="battleship-wrap" role="main">
+<main class="battleship-wrap full-bleed" role="main">
   <aside class="bs-sidebar" aria-label="Stats">
     <div class="card">
       <h3 style="margin:0 0 8px;">Meme Dashboard</h3>
@@ -179,6 +190,22 @@
     </div>
   </section>
 </main>
+
+<!-- Countdown overlay: 3 → 2 → 1 then turn text -->
+<div id="countdownOverlay" class="overlay" aria-live="assertive" aria-hidden="true">
+  <div class="panel">
+    <div id="countdownBigNum">3</div>
+    <h2 id="countdownTurnText" style="display:none;"></h2>
+  </div>
+</div>
+
+<!-- Captured meme popup (shows for ~1s when your meme is sunk) -->
+<div id="captureOverlay" class="overlay" aria-live="polite" aria-hidden="true">
+  <div class="panel">
+    <h2 id="captureTitle">opponent got your meme!</h2>
+    <img id="captureMemeImg" alt="Captured meme image" />
+  </div>
+</div>
 
 <!-- Winner / Loser overlays -->
 <div id="winnerOverlay" class="overlay">

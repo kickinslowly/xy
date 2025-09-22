@@ -146,3 +146,343 @@ input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px
 @media (max-width: 900px) {
   .modes-sidebar { display: none; }
 }
+
+/* Bubble Yum x Kahoot Theme */
+* { box-sizing: border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Fredoka:wght@400;600;700&display=swap');
+
+:root {
+  --bg-1: #ffe6f3;
+  --bg-2: #e8f3ff;
+  --bg-3: #eefbf2;
+  --text: #1f2330;
+  --muted: #636b7b;
+  --panel: rgba(255, 255, 255, 0.75);
+  --panel-border: rgba(255, 255, 255, 0.65);
+  --accent-pink: #ff4da6;
+  --accent-purple: #7a5cff;
+  --accent-blue: #36d1ff;
+  --accent-lime: #74f0a7;
+  --accent-yellow: #ffd84d;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow-1: 0 10px 30px rgba(122, 92, 255, 0.15), 0 4px 14px rgba(0,0,0,0.06);
+  --shadow-2: 0 18px 50px rgba(255, 77, 166, 0.2), 0 6px 18px rgba(0,0,0,0.06);
+  --ring: 0 0 0 3px rgba(122, 92, 255, 0.25);
+}
+
+html, body { height: 100%; margin: 0; font-family: 'Poppins', 'Fredoka', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--text); }
+body {
+  /* CSS variables placed on body to ensure inheritance even if :root fails */
+  --bg-1: #ffe6f3;
+  --bg-2: #e8f3ff;
+  --bg-3: #eefbf2;
+  --text: #1f2330;
+  --muted: #636b7b;
+  --panel: rgba(255, 255, 255, 0.75);
+  --panel-border: rgba(255, 255, 255, 0.65);
+  --accent-pink: #ff4da6;
+  --accent-purple: #7a5cff;
+  --accent-blue: #36d1ff;
+  --accent-lime: #74f0a7;
+  --accent-yellow: #ffd84d;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow-1: 0 10px 30px rgba(122, 92, 255, 0.15), 0 4px 14px rgba(0,0,0,0.06);
+  --shadow-2: 0 18px 50px rgba(255, 77, 166, 0.2), 0 6px 18px rgba(0,0,0,0.06);
+  --ring: 0 0 0 3px rgba(122, 92, 255, 0.25);
+
+  background:
+              radial-gradient(1400px 900px at -15% -20%, rgba(122,92,255,0.28), transparent 62%),
+              radial-gradient(1200px 760px at 120% -10%, rgba(255,77,166,0.26), transparent 58%),
+              radial-gradient(1200px 900px at 50% 120%, rgba(54,209,255,0.22), transparent 58%),
+              linear-gradient(135deg, #f1f2ff 0%, #ffe0f4 100%);
+  background-attachment: fixed;
+}
+
+/* Header / Toolbar */
+.app-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid rgba(122,92,255,0.15); backdrop-filter: saturate(1.1) blur(6px); background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.65)); }
+.toolbar.panels { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; padding: 12px 16px; }
+.toolbar .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 8px 12px; box-shadow: var(--shadow-1); transition: transform .15s ease, box-shadow .2s ease; }
+.toolbar .panel[open] { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.toolbar .panel > summary { font-weight: 700; cursor: pointer; list-style: none; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+.toolbar .panel > summary::-webkit-details-marker { display: none; }
+.toolbar .group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 6px; }
+.toolbar label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.toolbar input[type="number"] { width: 70px; }
+
+/* Bubble buttons */
+.toolbar button, button:not(.tab), .btn { --b1: var(--accent-pink); padding: 8px 14px; border: 0; background: var(--b1); color: #fff; border-radius: 999px; cursor: pointer; font-weight: 700; letter-spacing: 0.2px; box-shadow: 0 8px 18px rgba(122,92,255,0.25), 0 2px 6px rgba(0,0,0,0.06); transform: translateY(0); transition: transform .15s ease, box-shadow .2s ease, filter .2s ease; }
+.toolbar button:hover, button:not(.tab):hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(122,92,255,0.30), 0 4px 12px rgba(0,0,0,0.08); filter: brightness(1.03); }
+.toolbar button:active, button:not(.tab):active, .btn:active { transform: translateY(0); box-shadow: 0 6px 12px rgba(122,92,255,0.2), 0 2px 6px rgba(0,0,0,0.06); }
+.toolbar button[disabled], button[disabled] { opacity: .6; cursor: not-allowed; }
+
+/* Secondary / light buttons */
+.btn-light, .toolbar .panel .group > a, .toolbar .panel .group > .btn-plain { background: #fff; color: var(--text); border: 1px solid rgba(31,35,48,0.08); box-shadow: 0 8px 18px rgba(0,0,0,0.03); }
+.btn-lime { --b1: var(--accent-lime); }
+.btn-sun { --b1: var(--accent-yellow); color: #553500; }
+
+/* Inputs */
+input[type="text"], input[type="number"], select, input[type="color"] { appearance: none; -webkit-appearance: none; padding: 8px 10px; border-radius: 12px; border: 1px solid rgba(31,35,48,0.1); background: rgba(255,255,255,0.9); box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); color: var(--text); font-family: inherit; font-size: 14px; }
+input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px; }
+
+.hint { color: var(--muted); font-size: 12px; }
+
+/* Layout */
+.main-wrap { display: flex; gap: 0; align-items: stretch; }
+.canvas-wrap { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; padding: 16px; }
+#plane { width: 100%; max-width: 1100px; height: 70vh; border: 2px dashed rgba(122,92,255,0.25); background: white; border-radius: 16px; box-shadow: var(--shadow-1); touch-action: none; }
+
+.sidebar { width: 280px; border-left: 1px solid rgba(122,92,255,0.15); padding: 14px; background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.55)); backdrop-filter: blur(6px); }
+.sidebar-header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.sidebar h3 { margin: 0; font-size: 16px; }
+.sidebar small { color: var(--muted); }
+.vertex-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; max-height: 70vh; overflow: auto; }
+.vertex-item { display: flex; align-items: center; gap: 10px; padding: 8px 8px; border: 1px solid rgba(122,92,255,0.15); border-radius: 12px; background: rgba(255,255,255,0.9); box-shadow: 0 4px 10px rgba(122,92,255,0.08); }
+.vertex-item.selected { border-color: var(--accent-yellow); box-shadow: 0 0 0 3px rgba(255,216,77,0.35) inset, 0 8px 16px rgba(255,216,77,0.15); }
+.vertex-label { width: 64px; }
+.vertex-label input { width: 100%; padding: 6px 8px; border: 1px solid rgba(31,35,48,0.1); border-radius: 10px; }
+.vertex-coord { color: #333; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+
+/* Presence badge */
+#presence { font-weight: 700; color: var(--accent-purple); background: rgba(122,92,255,0.1); padding: 6px 10px; border-radius: 999px; box-shadow: inset 0 -1px 0 rgba(122,92,255,0.1); }
+
+/* Visuals for selected vertex */
+.selected-shadow { filter: drop-shadow(0 0 6px rgba(255, 216, 77, 0.9)); }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .sidebar { width: 220px; }
+  #plane { height: 60vh; }
+}
+@media (max-width: 640px) {
+  .sidebar { display: none; }
+  #plane { height: 55vh; }
+}
+
+/* Modal styles */
+.modal[hidden] { display: none !important; }
+.modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; }
+.modal .modal-backdrop { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 40%, rgba(122,92,255,0.25), rgba(255,77,166,0.2)); backdrop-filter: blur(4px); }
+.modal .modal-content { position: relative; background: linear-gradient(180deg, #ffffff, #fff7fd); border-radius: 16px; width: min(90vw, 900px); max-height: 80vh; overflow: auto; box-shadow: var(--shadow-2); border: 1px solid rgba(122,92,255,0.2); }
+.modal .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px dashed rgba(122,92,255,0.2); }
+.modal .modal-header h3 { margin: 0; font-size: 18px; }
+.modal .modal-header button { border: 0; background: #fff; border-radius: 999px; padding: 6px 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; padding: 14px; }
+.gallery-item { display: block; padding: 8px; background: linear-gradient(180deg, #ffffff, #f7f5ff); border: 1px solid rgba(122,92,255,0.15); border-radius: 14px; cursor: pointer; box-shadow: var(--shadow-1); transition: transform .15s ease, box-shadow .2s ease; }
+.gallery-item:hover { transform: translateY(-2px) scale(1.02); box-shadow: var(--shadow-2); }
+.gallery-item img { display: block; width: 100%; height: 100px; object-fit: contain; }
+
+
+/* Coordinate Plane emphasis (bigger section and tool text) */
+.mode-plane .toolbar .panel > summary { font-size: 20px; }
+.mode-plane .toolbar label { font-size: 16px; }
+.mode-plane .toolbar button { font-size: 14px; }
+.mode-plane .hint { font-size: 14px; }
+.mode-plane input[type="text"],
+.mode-plane input[type="number"],
+.mode-plane select { font-size: 16px; }
+.mode-plane input[type="color"] { width: 48px; height: 40px; border-radius: 12px; }
+
+/* Left modes column */
+.modes-sidebar { width: 200px; border-right: 1px solid rgba(122,92,255,0.15); padding: 14px; background: linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.58)); backdrop-filter: blur(6px); }
+.modes-sidebar h3 { margin: 0 0 8px; font-size: 16px; }
+.modes-list { display: flex; flex-direction: column; gap: 10px; }
+.mode-link { display: block; text-decoration: none; font-weight: 700; color: #fff; background: var(--accent-purple); padding: 10px 12px; border-radius: 12px; box-shadow: 0 6px 14px rgba(122,92,255,0.22); transition: transform .15s ease, box-shadow .2s ease, filter .2s ease; }
+.mode-link:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 10px 20px rgba(122,92,255,0.28); }
+.mode-link.is-active { background: var(--accent-pink); }
+
+@media (max-width: 900px) {
+  .modes-sidebar { display: none; }
+}
+
+/* Left sidebar variant to mirror the right sidebar */
+.sidebar-left {
+  border-left: none;
+  border-right: 1px solid rgba(122,92,255,0.15);
+}
+
+/* Stack action buttons neatly */
+.action-buttons { display: grid; gap: 8px; }
+
+
+/* Coordinate Plane: smaller left action buttons */
+.mode-plane .action-buttons button {
+  padding: 4px 7px;
+  font-size: 0.8em;
+}
+
+
+/* Center top toolbar panels in Coordinate Plane mode */
+.mode-plane .toolbar.panels { justify-content: center; }
+
+
+/* Plane mode: flatter, calmer left sidebar action buttons (grouped variants) */
+.mode-plane .sidebar-left .action-buttons button {
+  /* Override global bubble buttons */
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(31,35,48,0.15);
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: none;
+  transform: none;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.mode-plane .sidebar-left .action-buttons button:hover {
+  background: #f6f7fb;
+  border-color: rgba(31,35,48,0.22);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.mode-plane .sidebar-left .action-buttons button:active {
+  background: #eef0f6;
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+}
+.mode-plane .sidebar-left .action-buttons button[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+/* Undo/Redo: Outline variant (same look for the pair) */
+.mode-plane .sidebar-left .action-buttons .btn-outline {
+  background: transparent;
+  border-color: rgba(31,35,48,0.25);
+}
+.mode-plane .sidebar-left .action-buttons .btn-outline:hover {
+  background: rgba(31,35,48,0.04);
+}
+
+/* Selection actions: neutral/subtle fill (same look for Clear/Delete selected) */
+.mode-plane .sidebar-left .action-buttons .btn-neutral {
+  background: #f9fafb;
+  border-color: rgba(31,35,48,0.15);
+  color: var(--text);
+}
+.mode-plane .sidebar-left .action-buttons .btn-neutral:hover {
+  background: #f3f4f6;
+}
+
+/* Clear all: stands alone (danger outline, not shouty) */
+.mode-plane .sidebar-left .action-buttons .btn-danger {
+  background: #fff;
+  color: #b91c1c; /* muted red */
+  border-color: rgba(239,68,68,0.5);
+}
+.mode-plane .sidebar-left .action-buttons .btn-danger:hover {
+  background: #fff5f5;
+  border-color: rgba(239,68,68,0.7);
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+}
+
+/* Export PDF: most prominent, but still calm (solid accent, soft shadow) */
+.mode-plane .sidebar-left .action-buttons .btn-accent {
+  background: var(--accent-purple);
+  color: #fff;
+  border-color: rgba(122,92,255,0.35);
+}
+.mode-plane .sidebar-left .action-buttons .btn-accent:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--accent-purple) 92%, white);
+  box-shadow: 0 8px 18px rgba(122,92,255,0.18);
+}
+
+/* Coordinate Plane: primary nav tabs improved */
+/* Grouping bar behind the toolbar so tabs don’t float */
+.mode-plane .app-header .toolbar.panels {
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(31,35,48,0.12);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(122,92,255,0.12);
+  padding: 10px 12px;
+  gap: 10px;
+}
+/* Flatten panel container, emphasize the summary tabs instead */
+.mode-plane .toolbar .panel {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+/* Tabs (the <summary> elements) */
+.mode-plane .toolbar .panel > summary {
+  display: inline-flex;
+  align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(31,35,48,0.15);
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease, color .15s ease;
+}
+.mode-plane .toolbar .panel > summary:hover {
+  background: #f6f7fb;
+  border-color: rgba(31,35,48,0.22);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.mode-plane .toolbar .panel > summary:active {
+  background: #eef0f6;
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+  transform: translateY(0);
+}
+/* Active state = vibrant, filled with accent */
+.mode-plane .toolbar .panel[open] > summary {
+  background: var(--accent-purple);
+  color: #ffffff;
+  border-color: color-mix(in srgb, var(--accent-purple) 66%, #000);
+  box-shadow: 0 8px 18px rgba(122,92,255,0.18);
+}
+/* Provide slight separation between summary (tab) and its content */
+.mode-plane .toolbar .panel[open] .group { margin-top: 8px; }
+
+/* Ensure top header mode links remain ghost/secondary, not filled */
+.site-header .modes-nav .mode-link {
+  box-shadow: none;
+}
+
+
+/* Toolbar dropdown row: keep top tabs fixed and show expanded tools directly beneath selected tab */
+.mode-plane .toolbar .panel { position: relative; }
+.mode-plane .toolbar .panel > .group,
+.mode-plane .toolbar .panel > .transform-extras {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  background: #ffffff;
+  border: 1px solid rgba(31,35,48,0.15);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.14);
+  white-space: nowrap;
+  z-index: 5;
+}
+/* Hide content when the panel is not open */
+.mode-plane .toolbar .panel:not([open]) > .group,
+.mode-plane .toolbar .panel:not([open]) > .transform-extras { display: none; }
+
+/* Reserve space under the toolbar when any panel is open so the dropdown row doesn’t overlap content */
+.mode-plane .app-header .toolbar.panels { position: relative; }
+.mode-plane .app-header:has(.toolbar .panel[open]) { padding-bottom: 64px; }
+
+
+/* Toolbar summary icons */
+.toolbar .panel > summary .summary-icon {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-block;
+  vertical-align: -0.2em; /* nudge to align visually with text baseline */
+}
+
+
+/* Utilities */
+.btn-sm { padding: 6px 10px !important; font-size: 14px !important; }
+
+/* Canvas visual tweak for a friendlier feel */
+.mode-plane #plane {
+  background: radial-gradient(140% 120% at 20% 15%, #ffffff 0%, #fffaf5 85%) !important;
+  border: 2px dashed rgba(122,92,255,0.22) !important;
+}
