@@ -486,3 +486,10 @@ input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px
   background: radial-gradient(140% 120% at 20% 15%, #ffffff 0%, #fffaf5 85%) !important;
   border: 2px dashed rgba(122,92,255,0.22) !important;
 }
+
+
+/* Center Actions header in left sidebar */
+.sidebar-left .sidebar-header {
+  align-items: center;
+  text-align: center;
+}

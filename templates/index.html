@@ -43,7 +43,6 @@
           <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" />
           <label for="vertexSize">Vertex size:</label>
           <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" aria-label="Vertex size" />
-          <button id="clearVertices" type="button">Clear vertices</button>
         </div>
       </details>
 
@@ -59,7 +58,6 @@
             <input id="closeLoop" type="checkbox" />
             Close loop
           </label>
-          <button id="clearLines" type="button">Clear lines</button>
         </div>
       </details>
 
@@ -114,13 +112,22 @@
     <aside class="sidebar sidebar-left" aria-label="Quick actions">
       <div class="sidebar-header">
         <h3>Actions</h3>
-        <small>Undo/redo, clear, export</small>
       </div>
       <div class="action-buttons" style="padding: 8px 12px;">
         <button id="undoBtn" class="btn-outline" type="button" title="Undo (Ctrl+Z)" style="width:100%;">↶ Undo</button>
         <button id="redoBtn" class="btn-outline" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)" style="width:100%;">↷ Redo</button>
         <button id="deleteSelected" class="btn-neutral" type="button" title="Delete selected vertices/lines/images" style="width:100%;">🗑️ Delete selected</button>
         <button id="clearSelection" class="btn-neutral" type="button" title="Clear selection" style="width:100%;">✨ Clear selection</button>
+        <div class="split-row" style="display:flex; gap:8px; width:100%; margin:8px 0;">
+          <button id="clearVertices" class="btn-neutral" type="button" title="Delete all vertices" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1em; height:1em;"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
+            <span style="font-size:0.8em;">Delete vertices</span>
+          </button>
+          <button id="clearLines" class="btn-neutral" type="button" title="Delete all lines" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1em; height:1em;"><line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span style="font-size:0.8em;">Delete lines</span>
+          </button>
+        </div>
         <button id="clearAll" class="btn-danger btn-sm" type="button" title="Remove all content" style="width:100%;">Delete all</button>
         <button id="exportPdfBtn" class="btn-neutral" type="button" title="Export current view as PDF" style="width:100%;">📄 Export PDF</button>
       </div>
