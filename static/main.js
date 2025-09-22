@@ -517,6 +517,263 @@
     return formatEquationFromMB(il.m, il.b);
   }
 
+  // Challenge mode: Graph this equation!
+  const challengeToggle = document.getElementById('challengeToggle');
+  const nextChallengeBtn = document.getElementById('nextChallengeBtn');
+  const challengeTextEl = document.getElementById('challengeText');
+  const rewardToast = document.getElementById('rewardToast');
+  const failToast = document.getElementById('failToast');
+  const startLineChallengeBtn = document.getElementById('startLineChallengeBtn');
+  const startVertexChallengeBtn = document.getElementById('startVertexChallengeBtn');
+
+  let challengeActive = false;
+  let currentChallenge = null; // { type: 'line', m, b, label }
+  let wrongTimer = null;
+
+  function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+  function pickRandomLine() {
+    // Friendly integers for now
+    let m = randomInt(-3, 3);
+    // Avoid both m=0 and b=0 too often; keep variety
+    if (m === 0 && Math.random() < 0.5) m = randomInt(1, 3) * (Math.random() < 0.5 ? -1 : 1);
+    const b = randomInt(-8, 8);
+    return { type: 'line', m, b, label: formatEquationFromMB(m, b) };
+  }
+  function pickRandomVertex() {
+    // Friendly integer coordinates
+    const x = randomInt(-9, 9);
+    let y = randomInt(-9, 9);
+    // Avoid (0,0) too frequently
+    if (x === 0 && y === 0 && Math.random() < 0.5) {
+      y = randomInt(1, 9) * (Math.random() < 0.5 ? -1 : 1);
+    }
+    return { type: 'vertex', x, y, label: `(${formatNumber(x)}, ${formatNumber(y)})` };
+  }
+  function updateChallengeUi() {
+    if (challengeTextEl) {
+      if (challengeActive && currentChallenge) {
+        if (currentChallenge.type === 'vertex') {
+          challengeTextEl.textContent = `Plot this point: ${currentChallenge.label}`;
+        } else {
+          challengeTextEl.textContent = `Graph this: ${currentChallenge.label}`;
+        }
+      } else {
+        challengeTextEl.textContent = '';
+      }
+    }
+    if (nextChallengeBtn) {
+      nextChallengeBtn.disabled = !challengeActive;
+      try { nextChallengeBtn.style.display = challengeActive ? 'inline-block' : 'none'; } catch {}
+    }
+  }
+  function setChallengeActive(on) {
+    challengeActive = !!on;
+    if (!challengeActive) {
+      // Cleanup any pending wrong feedback
+      if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
+      hideFailToast();
+      removeChallengeAnswerOverlays();
+    }
+    if (challengeActive && !currentChallenge) {
+      currentChallenge = pickRandomLine();
+    }
+    updateChallengeUi();
+  }
+
+  function removeChallengeAnswerOverlays() {
+    // Remove answer lines
+    for (let i = infiniteLines.length - 1; i >= 0; i--) {
+      if (infiniteLines[i] && infiniteLines[i].isChallengeAnswer) {
+        infiniteLines.splice(i, 1);
+      }
+    }
+    // Remove answer vertices
+    for (let i = vertices.length - 1; i >= 0; i--) {
+      if (vertices[i] && vertices[i].isChallengeAnswer) {
+        vertices.splice(i, 1);
+      }
+    }
+  }
+  function addChallengeAnswerLine() {
+    if (!currentChallenge) return null;
+    const color = '#10b981';
+    const width = 3;
+    const lineId = nextInfiniteLineId++;
+    const eqLabel = formatEquationFromMB(currentChallenge.m, currentChallenge.b);
+    const answerLine = { lineId, m: currentChallenge.m, b: currentChallenge.b, color, width, isChallengeAnswer: true, equationLabel: eqLabel };
+    infiniteLines.push(answerLine);
+    return answerLine;
+  }
+  function addChallengeAnswerVertex() {
+    if (!currentChallenge || currentChallenge.type !== 'vertex') return null;
+    const size = clamp(parseFloat(vertexSizeInput.value) || 6, 2, 20) + 2;
+    const v = {
+      id: nextVertexId++,
+      x: currentChallenge.x,
+      y: currentChallenge.y,
+      color: '#10b981',
+      size,
+      selected: false,
+      label: `✅ Correct: (${formatNumber(currentChallenge.x)}, ${formatNumber(currentChallenge.y)})`,
+      isChallengeAnswer: true,
+    };
+    vertices.push(v);
+    try { triggerVertexPulse(v, '#10b981'); } catch {}
+    return v;
+  }
+  function startChallenge(type) {
+    // type: 'line' | 'vertex'
+    if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
+    hideFailToast();
+    hideRewardToast();
+    challengeActive = true;
+    removeChallengeAnswerOverlays();
+    clearAllSilently();
+    currentChallenge = (type === 'vertex') ? pickRandomVertex() : pickRandomLine();
+    updateChallengeUi();
+  }
+  function afterAddVertex(newVertex) {
+    try {
+      if (!challengeActive || !currentChallenge || currentChallenge.type !== 'vertex' || !newVertex) return;
+      const tol = 1e-6;
+      const ok = Math.abs(newVertex.x - currentChallenge.x) <= tol && Math.abs(newVertex.y - currentChallenge.y) <= tol;
+      if (ok) {
+        if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
+        hideFailToast();
+        removeChallengeAnswerOverlays();
+        showRewardToast();
+        setTimeout(() => {
+          hideRewardToast();
+          clearAllSilently();
+          nextChallenge();
+        }, 1300);
+      } else {
+        if (wrongTimer) return; // already showing feedback
+        removeChallengeAnswerOverlays();
+        addChallengeAnswerVertex();
+        draw();
+        showFailToast();
+        wrongTimer = setTimeout(() => {
+          wrongTimer = null;
+          hideFailToast();
+          removeChallengeAnswerOverlays();
+          clearAllSilently();
+          if (challengeActive && currentChallenge && challengeTextEl) {
+            challengeTextEl.textContent = `Try again! Plot this point: ${currentChallenge.label}`;
+          } else {
+            updateChallengeUi();
+          }
+        }, 3000);
+      }
+    } catch (e) {
+      // noop
+    }
+  }
+  // Start buttons
+  if (startLineChallengeBtn) {
+    startLineChallengeBtn.addEventListener('click', () => startChallenge('line'));
+  }
+  if (startVertexChallengeBtn) {
+    startVertexChallengeBtn.addEventListener('click', () => startChallenge('vertex'));
+  }
+
+  function showRewardToast() {
+    if (!rewardToast) return;
+    rewardToast.hidden = false;
+    rewardToast.classList.add('show');
+  }
+  function hideRewardToast() {
+    if (!rewardToast) return;
+    rewardToast.classList.remove('show');
+    rewardToast.hidden = true;
+  }
+  function showFailToast() {
+    if (!failToast) return;
+    failToast.hidden = false;
+    failToast.classList.add('show');
+  }
+  function hideFailToast() {
+    if (!failToast) return;
+    failToast.classList.remove('show');
+    failToast.hidden = true;
+  }
+  function clearAllSilently() {
+    // Reset all content without confirmation
+    vertices.length = 0;
+    lines.length = 0;
+    infiniteLines.length = 0;
+    nextVertexId = 1;
+    nextInfiniteLineId = 1;
+    selectionCounter = 1;
+    draw();
+    pushHistory();
+  }
+  function nextChallenge() {
+    if (!challengeActive) return;
+    if (currentChallenge && currentChallenge.type === 'vertex') {
+      currentChallenge = pickRandomVertex();
+    } else {
+      currentChallenge = pickRandomLine();
+    }
+    updateChallengeUi();
+  }
+  function afterAddInfiniteLine(newLine) {
+    try {
+      if (!challengeActive || !currentChallenge || currentChallenge.type !== 'line' || !newLine) return;
+      if (newLine.vertical) return; // Only y=mx+b challenges for now
+      const tol = 1e-6;
+      const ok = Math.abs((newLine.m ?? NaN) - currentChallenge.m) <= tol && Math.abs((newLine.b ?? NaN) - currentChallenge.b) <= tol;
+      if (ok) {
+        // If a wrong-feedback flow is active, cancel it
+        if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
+        hideFailToast();
+        removeChallengeAnswerOverlays();
+        showRewardToast();
+        setTimeout(() => {
+          hideRewardToast();
+          clearAllSilently();
+          nextChallenge();
+        }, 1300);
+      } else {
+        // Wrong answer path
+        if (wrongTimer) return; // already showing feedback
+        // Show fail toast and the correct line distinctly
+        removeChallengeAnswerOverlays();
+        addChallengeAnswerLine();
+        draw();
+        showFailToast();
+        // Linger for 3 seconds then clear and prompt to try again
+        wrongTimer = setTimeout(() => {
+          wrongTimer = null;
+          hideFailToast();
+          removeChallengeAnswerOverlays();
+          clearAllSilently();
+          if (challengeActive && currentChallenge && challengeTextEl) {
+            challengeTextEl.textContent = `Try again! Graph this: ${currentChallenge.label}`;
+          } else {
+            updateChallengeUi();
+          }
+        }, 3000);
+      }
+    } catch (e) {
+      // noop
+    }
+  }
+  if (challengeToggle) {
+    challengeToggle.addEventListener('change', () => {
+      setChallengeActive(!!challengeToggle.checked);
+    });
+  }
+  if (nextChallengeBtn) {
+    nextChallengeBtn.addEventListener('click', () => {
+      if (!challengeActive) return;
+      clearAllSilently();
+      nextChallenge();
+    });
+  }
+
   // Label helpers
   const BASE_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   function defaultLabelForId(id) {
@@ -646,22 +903,32 @@
       }
       if (!a || !b) continue;
 
-      const baseColor = il.color || '#1e88e5';
-      const baseWidth = clamp(parseFloat(il.width) || 2, 1, 20);
+      let drawColor = il.color || '#1e88e5';
+      let drawWidth = clamp(parseFloat(il.width) || 2, 1, 20);
+      let dash = null;
+      if (il.isChallengeAnswer) {
+        drawColor = '#10b981'; // emerald
+        drawWidth = drawWidth + 1;
+        dash = [10, 6];
+      }
       // Draw selection highlight first (underneath)
       if (il.selected) {
-        drawStyledWorldLine(a, b, '#ffd600', baseWidth + 3, null, 0.95);
+        drawStyledWorldLine(a, b, '#ffd600', drawWidth + 3, null, 0.95);
       }
       // Draw the actual line
-      drawStyledWorldLine(a, b, baseColor, baseWidth);
+      drawStyledWorldLine(a, b, drawColor, drawWidth, dash);
 
-      // Draw label for selected lines only
-      if (il.selected) {
+      // Draw label for selected lines or for challenge answer
+      const shouldLabel = il.selected || il.isChallengeAnswer;
+      if (shouldLabel) {
         const pa = worldToScreen(a);
         const pb = worldToScreen(b);
         const mx = (pa.x + pb.x) / 2;
         const my = (pa.y + pb.y) / 2;
-        const label = (il.equationLabel && String(il.equationLabel).trim()) || equationLabelForLine(il);
+        let label = (il.equationLabel && String(il.equationLabel).trim()) || equationLabelForLine(il);
+        if (il.isChallengeAnswer) {
+          label = `✅ Correct: ${label}`;
+        }
         ctx.save();
         ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
         ctx.textAlign = 'center';
@@ -673,7 +940,7 @@
         ctx.lineWidth = 4;
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.strokeText(label, lx, ly);
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = il.isChallengeAnswer ? '#065f46' : '#1a1a1a';
         ctx.fillText(label, lx, ly);
         ctx.restore();
       }
@@ -2618,6 +2885,7 @@
     triggerVertexPulse(vtx, '#ffd600');
     draw();
     pushHistory();
+    afterAddVertex(vtx);
   });
 
   // Zoom logic
@@ -2819,13 +3087,16 @@
       // Auto-select the newly created line so its info is shown immediately
       const idsKey = selected.map(v => v.id).sort((a,b) => a - b).join('|');
       const lineId = nextInfiniteLineId++;
+      let newLine;
       if (params.vertical) {
-        infiniteLines.push({ lineId, vertical: true, x: params.x, color, width, selected: true, createdFromKey: idsKey });
+        newLine = { lineId, vertical: true, x: params.x, color, width, selected: true, createdFromKey: idsKey };
       } else {
-        infiniteLines.push({ lineId, m: params.m, b: params.b, color, width, selected: true, createdFromKey: idsKey });
+        newLine = { lineId, m: params.m, b: params.b, color, width, selected: true, createdFromKey: idsKey };
       }
+      infiniteLines.push(newLine);
       draw();
       pushHistory();
+      afterAddInfiniteLine(newLine);
     });
   }
 
@@ -2854,10 +3125,12 @@
       const width = clamp(parseFloat(lineWidthInput.value) || 2, 1, 20);
       const lineId = nextInfiniteLineId++;
       const eqLabel = formatEquationFromMB(m, bVal);
-      infiniteLines.push({ lineId, m, b: bVal, color, width, selected: true, equationLabel: eqLabel });
+      const newLine = { lineId, m, b: bVal, color, width, selected: true, equationLabel: eqLabel };
+      infiniteLines.push(newLine);
       draw();
       pushHistory();
       updateYmbPreview();
+      afterAddInfiniteLine(newLine);
     });
     // init preview
     updateYmbPreview();

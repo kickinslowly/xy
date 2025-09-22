@@ -505,3 +505,20 @@ input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px
 /* Coordinate tooltip */
 .coord-tooltip { position: fixed; z-index: 1000; background: #111; color: #fff; padding: 6px 10px; border-radius: 10px; font-size: 12px; box-shadow: 0 8px 18px rgba(0,0,0,0.2); pointer-events: none; opacity: 0; transform: translate(10px, -10px) scale(0.98); transition: opacity .12s ease, transform .12s ease; white-space: nowrap; }
 .coord-tooltip.show { opacity: 1; transform: translate(12px, -12px) scale(1); }
+
+
+/* Reward toast */
+.reward-toast[hidden] { display: none !important; }
+.reward-toast { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; pointer-events: none; }
+.reward-toast .reward-card { pointer-events: auto; background: linear-gradient(180deg, #ffffff, #fff5fb); border-radius: 16px; border: 1px solid rgba(122,92,255,0.25); padding: 14px 18px; box-shadow: var(--shadow-2); transform: scale(0.95); opacity: 0; transition: transform .15s ease, opacity .15s ease; display: flex; align-items: center; gap: 12px; }
+.reward-toast.show .reward-card { transform: scale(1); opacity: 1; }
+.reward-emoji { font-size: 22px; }
+.reward-text { font-weight: 800; font-size: 16px; }
+
+/* Fail toast */
+.fail-toast[hidden] { display: none !important; }
+.fail-toast { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; pointer-events: none; }
+.fail-toast .fail-card { pointer-events: auto; background: linear-gradient(180deg, #fff1f1, #ffe8e8); border-radius: 16px; border: 1px solid rgba(239,68,68,0.35); padding: 14px 18px; box-shadow: 0 18px 50px rgba(239,68,68,0.22), 0 6px 18px rgba(0,0,0,0.06); transform: scale(0.95); opacity: 0; transition: transform .15s ease, opacity .15s ease; display: flex; align-items: center; gap: 12px; }
+.fail-toast.show .fail-card { transform: scale(1); opacity: 1; }
+.fail-emoji { font-size: 22px; }
+.fail-text { font-weight: 800; font-size: 16px; color: #7f1d1d; }

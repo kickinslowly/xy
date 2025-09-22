@@ -120,6 +120,17 @@
             <span id="ymbEqPreview" class="hint"></span>
           </div>
         </details>
+        <details class="panel" id="challengePanel">
+          <summary>Challenge</summary>
+          <div class="group" role="group" aria-label="Challenge settings">
+            <button id="startLineChallengeBtn" type="button" class="btn-sun btn-sm" title="Start a line equation challenge">🚦 Start Line Challenge</button>
+            <button id="startVertexChallengeBtn" type="button" class="btn-lime btn-sm" title="Start a single-point challenge">🎯 Start Vertice Challenge</button>
+            <button id="nextChallengeBtn" type="button" class="btn-light btn-sm" title="Skip to a new challenge" style="display:none;">New challenge</button>
+          </div>
+          <div class="group" role="group" aria-label="Challenge prompt">
+            <span id="challengeText" class="hint" aria-live="polite"></span>
+          </div>
+        </details>
       </div>
 
     </nav>
@@ -207,6 +218,22 @@
           <input id="qrLinkText" type="text" readonly style="width:100%;" />
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Reward toast -->
+  <div id="rewardToast" class="reward-toast" hidden aria-live="assertive" role="alert">
+    <div class="reward-card">
+      <div class="reward-emoji">✨😉⭐💖</div>
+      <div class="reward-text"><strong>Nice!</strong> You graphed it!</div>
+    </div>
+  </div>
+
+  <!-- Fail toast -->
+  <div id="failToast" class="fail-toast" hidden aria-live="assertive" role="alert">
+    <div class="fail-card">
+      <div class="fail-emoji">🦖🧪🦕🔒</div>
+      <div class="fail-text"><strong>Ah ah ah!</strong> Not quite!</div>
     </div>
   </div>
 {% endblock %}
