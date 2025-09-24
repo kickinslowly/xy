@@ -22,6 +22,7 @@
             <a href="{{ url_for('line_mode') }}" class="mode-link {% if request.path == url_for('line_mode') %}is-active{% endif %}" {% if request.path == url_for('line_mode') %}aria-current="page"{% endif %}>Line Graph</a>
             <a href="{{ url_for('battleship') }}" class="mode-link {% if request.path == url_for('battleship') %}is-active{% endif %}" {% if request.path == url_for('battleship') %}aria-current="page"{% endif %}>Battleship</a>
             <a href="{{ url_for('meme_wars') }}" class="mode-link {% if request.path == url_for('meme_wars') %}is-active{% endif %}" {% if request.path == url_for('meme_wars') %}aria-current="page"{% endif %}>Meme Wars</a>
+            <a href="{{ url_for('ratios_mode') }}" class="mode-link {% if request.path == url_for('ratios_mode') %}is-active{% endif %}" {% if request.path == url_for('ratios_mode') %}aria-current="page"{% endif %}>Ratios</a>
           </div>
           {% block top_actions %}{% endblock %}
         </nav>

@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Ratios Mode{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <style>
+    html, body { height: 100%; }
+    body { display: grid; grid-template-rows: auto 1fr; }
+    .ratios-wrap { display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
+    .sidebar { border-right: 1px solid #e0e0e0; padding: 12px; background: #fcfcfc99; overflow: auto; }
+    .main { display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 12px; overflow: hidden; }
+    .controls .group { align-items: center; }
+    .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px; }
+    .meme { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 6px; display: grid; place-items: center; cursor: grab; box-shadow: var(--shadow-1); transition: transform .12s ease; }
+    .meme:hover { transform: translateY(-2px) scale(1.03); }
+    .meme img { max-width: 100%; max-height: 54px; pointer-events: none; }
+    .board { position: relative; background: #fff; border: 2px dashed rgba(122,92,255,0.25); border-radius: 14px; min-height: 320px; padding: 10px; overflow: auto; box-shadow: var(--shadow-1); }
+    .board[data-dragover="1"] { background: #f7f9ff; }
+    .placed { display: inline-flex; align-items: center; justify-content: center; width: 62px; height: 62px; margin: 6px; border-radius: 12px; background: #fafafe; border: 1px solid #ecebff; box-shadow: 0 4px 12px rgba(122,92,255,0.15); animation: popIn 180ms ease-out; }
+    .placed img { max-width: 100%; max-height: 50px; }
+    @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .stats { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .score-pill { padding: 6px 10px; border-radius: 999px; background: #fff; border: 1px solid #e0e0e0; font-weight: 800; }
+    .challenge { font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+
+    .giant-btn { font-size: clamp(18px, 3.8vmin, 38px); padding: 14px 22px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-pink), var(--accent-purple)); color: #fff; box-shadow: var(--shadow-2); }
+
+    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; background: #111; color: #fff; padding: 10px 14px; border-radius: 999px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); display: none; z-index: 1200; }
+    .toast.show { display: block; animation: toastIn 180ms ease-out; }
+    @keyframes toastIn { from { transform: translate(-50%, 16px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+    /* Victory overlay */
+    .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 2000; background: rgba(0,0,0,0.65); }
+    .overlay.show { display: flex; }
+    .overlay .panel { background: radial-gradient(ellipse at top, #fff0f6, #ffffff 60%); padding: 24px; border-radius: 16px; width: min(94vw, 820px); text-align: center; border: 2px solid #ffd6ef; box-shadow: 0 18px 60px rgba(0,0,0,0.35); }
+    .victory-title { font-size: clamp(28px, 6vmin, 72px); font-weight: 900; letter-spacing: 1.5px; margin: 0 0 8px; }
+    .victory-sub { font-size: clamp(18px, 3.5vmin, 32px); margin: 6px 0 0; }
+
+    /* Brief full-screen success/fail splashes */
+    .splash { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; z-index: 2500; color: #1b1b1b; }
+    .splash.show { display: flex; animation: splashIn 160ms ease-out; }
+    .splash .content { padding: 24px; border-radius: 24px; box-shadow: 0 18px 60px rgba(0,0,0,0.35); max-width: 92vw; }
+    .splash .title { font-size: clamp(40px, 10vmin, 120px); font-weight: 900; letter-spacing: 2px; margin: 0; line-height: 0.9; }
+    .splash .sub { font-size: clamp(18px, 4vmin, 42px); font-weight: 800; margin: 10px 0 0; }
+
+    .splash.success { background:
+      radial-gradient(900px 600px at 10% -10%, rgba(116,240,167,0.65), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(54,209,255,0.55), transparent 60%),
+      linear-gradient(135deg, #f0fff6 0%, #e8fff4 100%);
+    }
+    .splash.success .content { background: rgba(255,255,255,0.9); border: 3px solid rgba(116,240,167,0.8); }
+    .splash.success .title { color: #05603a; text-shadow: 0 6px 0 rgba(5,96,58,0.15), 0 12px 30px rgba(5,96,58,0.25); animation: bounceScale 650ms cubic-bezier(.2,1.4,.3,1); }
+
+    .splash.fail { background:
+      radial-gradient(900px 600px at -10% 110%, rgba(255,216,77,0.55), transparent 60%),
+      radial-gradient(900px 600px at 120% -10%, rgba(255,77,77,0.45), transparent 60%),
+      linear-gradient(135deg, #fff8f0 0%, #fff0f0 100%);
+    }
+    .splash.fail .content { background: rgba(255,255,255,0.92); border: 3px solid rgba(255,77,77,0.75); }
+    .splash.fail .title { color: #8b0000; text-shadow: 0 6px 0 rgba(139,0,0,0.18), 0 12px 30px rgba(139,0,0,0.25); animation: wobble 600ms ease-in-out; }
+
+    @keyframes bounceScale { 0% { transform: scale(0.6) rotate(-3deg); opacity: 0; } 60% { transform: scale(1.08) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); } }
+    @keyframes wobble { 0% { transform: rotate(0deg); } 20% { transform: rotate(-8deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-5deg); } 80% { transform: rotate(5deg); } 100% { transform: rotate(0deg); } }
+    @keyframes splashIn { from { transform: scale(0.98); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* 'Create this ratio' prompt layout */
+    .rp-wrap { display: inline-block; }
+    .rp-label { display:block; font-weight: 900; font-size: 16px; letter-spacing: .3px; margin-bottom: 6px; }
+    .ratio-prompt { display: grid; gap: 6px; justify-items: center; }
+    .ratio-prompt .row { display: flex; align-items: center; justify-content: center; gap: 14px; }
+    .rp-img { width: clamp(44px, 8vmin, 80px); height: clamp(44px, 8vmin, 80px); object-fit: contain; border-radius: 12px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+    .rp-colon { font-size: clamp(18px, 6vmin, 48px); font-weight: 900; color: var(--accent-purple); text-shadow: 0 2px 8px rgba(122,92,255,0.18); }
+    .rp-num { font-size: clamp(24px, 7vmin, 56px); font-weight: 900; color: #1f2330; background: linear-gradient(180deg, #ffffff, #f7f7ff); border: 2px solid #ecebff; border-radius: 12px; min-width: 64px; text-align: center; padding: 4px 12px; box-shadow: 0 10px 24px rgba(122,92,255,0.12); }
+    /* Center and highlight the Challenge panel */
+    header.app-header nav[aria-label="Ratios controls"] {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+    }
+    #challengePanel {
+      grid-column: 2;
+      justify-self: center;
+      background:
+        radial-gradient(600px 300px at 50% -100%, rgba(122,92,255,0.12), transparent 60%),
+        #ffffff;
+      border: 2px solid #ecebff;
+      border-radius: 14px;
+      box-shadow: 0 10px 24px rgba(122,92,255,0.18);
+    }
+    #challengePanel > summary {
+      font-weight: 900;
+      text-align: center;
+    }
+    #challengePanel .group.controls {
+      justify-content: center;
+      text-align: center;
+    }
+    #sessionPanel {
+      grid-column: 3;
+      justify-self: end;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<header class="app-header full-bleed" role="banner">
+  <nav class="toolbar panels" aria-label="Ratios controls">
+    <details id="sessionPanel" class="panel">
+      <summary>
+        Session
+        <span id="presence" title="Number of users currently online in this room" style="margin-left:8px; font-weight:600;">• Offline</span>
+      </summary>
+      <div class="group" role="group" aria-label="Collaboration status">
+        <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+        <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
+      </div>
+    </details>
+
+    <details id="challengePanel" class="panel" open>
+      <summary>Challenge</summary>
+      <div class="group controls">
+        <label>
+          Mode:
+          <select id="modeSelect">
+            <option value="create">Create this ratio</option>
+            <option value="partpart">Part-to-part ratio</option>
+            <option value="partwhole">Part-to-whole ratio</option>
+            <option value="equiv">Equivalent ratio</option>
+            <option value="master">Master of ratios</option>
+          </select>
+        </label>
+        <button id="nextChallengeBtn" type="button" class="btn-light">Next challenge</button>
+        <span class="score-pill">Score: <span id="score">0</span> / 20</span>
+      </div>
+    </details>
+  </nav>
+</header>
+
+<main class="ratios-wrap full-bleed">
+  <aside class="sidebar" aria-label="Memes palette">
+    <h3 style="margin-top:8px;">Memes</h3>
+    <p class="hint" style="margin-top:0;">Drag onto the board.</p>
+    <div class="palette" id="palette">
+      {% for img in available_images %}
+      <div class="meme" draggable="true" data-src="{{ url_for('static', filename=img) }}" title="Drag me!">
+        <img src="{{ url_for('static', filename=img) }}" alt="meme" />
+      </div>
+      {% endfor %}
+    </div>
+  </aside>
+  <section class="main">
+    <div class="stats"><span id="challengeText" class="challenge">Loading...</span></div>
+    <div id="board" class="board" aria-label="Drop memes here"></div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button id="submitBtn" class="giant-btn" type="button">I AM A RATIO GOD!!! YOLO!!!!</button>
+      <button id="clearBtn" class="btn-light" type="button">Clear board</button>
+    </div>
+  </section>
+</main>
+
+<!-- Share QR modal (reused id for styling compatibility) -->
+<div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Share session</h3>
+      <button id="closeQrModal" type="button" aria-label="Close">×</button>
+    </div>
+    <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
+      <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
+      <div style="min-width:260px; max-width:520px;">
+        <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
+        <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
+        <input id="qrLinkText" type="text" readonly style="width:100%;" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite">Nice!</div>
+
+<div id="victory" class="overlay" role="dialog" aria-modal="true" aria-label="Victory">
+  <div class="panel">
+    <h2 id="victoryTitle" class="victory-title">SUPER BRAIN ROTTY SILLY VICTORY!!!</h2>
+    <p id="victorySub" class="victory-sub">Master of ratios!</p>
+    <div style="margin-top:12px;"><button id="victoryClose" class="btn btn-lime" type="button">Keep going</button></div>
+  </div>
+</div>
+
+<!-- Brief full-screen splashes for success/failure -->
+<div id="splashSuccess" class="splash success" role="status" aria-live="polite" aria-label="Correct">
+  <div class="content">
+    <h2 class="title">✅ YAAAS!!!</h2>
+    <p class="sub">Correct! Ratio royalty unlocked 👑</p>
+  </div>
+</div>
+<div id="splashFail" class="splash fail" role="status" aria-live="polite" aria-label="Try again">
+  <div class="content">
+    <h2 class="title">🙃 AH AH AH!</h2>
+    <p class="sub">Almost! Try again… you got this 💪</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script>
+    window.AVAILABLE_MEMES = {{ available_images|tojson }}.map(n => `{{ url_for('static', filename='') }}${n}`);
+  </script>
+  <script src="{{ url_for('static', filename='ratios_mode.js') }}?v=20250923"></script>
+{% endblock %}

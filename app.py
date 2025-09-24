@@ -9,7 +9,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # In-memory state storage per room and mode.
 # rooms_state[room]['plane'] or ['line'] -> last known state (dict)
-rooms_state = defaultdict(lambda: {'plane': None, 'line': None, 'battleship': None, 'memewars': None})
+rooms_state = defaultdict(lambda: {'plane': None, 'line': None, 'battleship': None, 'memewars': None, 'ratios': None})
 # Track connections per room for presence
 room_members = defaultdict(set)  # room -> set of sids
 # Battleship role assignment per room: first joiner = 'A', second = 'B', others spectate
@@ -48,6 +48,18 @@ def meme_wars():
     except Exception:
         images = []
     return render_template('meme_wars.html', available_images=images)
+
+
+@app.route('/ratios')
+def ratios_mode():
+    # Gather available images from the static directory for ratios challenges
+    static_dir = os.path.join(app.root_path, 'static')
+    exts = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
+    try:
+        images = [name for name in os.listdir(static_dir) if os.path.splitext(name)[1].lower() in exts]
+    except Exception:
+        images = []
+    return render_template('ratios.html', available_images=images)
 
 
 def _generate_unique_pin(length=6):
