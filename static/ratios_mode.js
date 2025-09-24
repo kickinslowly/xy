@@ -36,6 +36,10 @@
   const victoryTitle = qs('#victoryTitle');
   const victorySub = qs('#victorySub');
   const victoryClose = qs('#victoryClose');
+  const victoryAgain = qs('#victoryAgain');
+  const confettiEl = qs('#confetti');
+  const confettiSuccessEl = qs('#confettiSuccess');
+  const balloonsSuccessEl = qs('#balloonsSuccess');
   const splashSuccess = qs('#splashSuccess');
   const splashFail = qs('#splashFail');
 
@@ -326,10 +330,12 @@
       sharedState.score = (sharedState.score || 0) + 1;
       if (scoreEl) scoreEl.textContent = String(sharedState.score);
       // Big silly full-screen pop!
+      startSuccessFX();
       flash(splashSuccess, 1100);
+      setTimeout(() => stopSuccessFX(), 1300);
       if (sharedState.score >= 20) {
-        victoryTitle.textContent = `SUPER BRAIN ROTTY SILLY VICTORY — MASTER OF ${labelForMode(prevMode).toUpperCase()}!`;
-        victorySub.textContent = 'You hit 20 points!';
+        victoryTitle.textContent = `Goofy Ratio Victory! 🎉`;
+        victorySub.textContent = `20/20 — Master of ${labelForMode(prevMode)}!`;
         // Let the success splash play first
         setTimeout(() => showVictory(), 900);
       }
@@ -355,15 +361,124 @@
     }
   }
 
-  function showVictory() { victory && victory.classList.add('show'); }
-  function hideVictory() { victory && victory.classList.remove('show'); }
+  // Confetti utilities for victory
+  let confettiTimer = null;
+  const confettiEmojis = ['🎉','✨','🎊','⭐','🌈','🧠','🤪','🔥','💥','🥳'];
+
+  function spawnConfettiPiece() {
+    if (!confettiEl) return;
+    const span = document.createElement('span');
+    span.className = 'confetti-piece';
+    span.textContent = confettiEmojis[Math.floor(Math.random() * confettiEmojis.length)];
+    const left = Math.random() * 100;
+    span.style.left = `${left}%`;
+    span.style.setProperty('--x', `${(Math.random() * 12 - 6).toFixed(2)}vw`);
+    const dur = 3 + Math.random() * 3;
+    const delay = Math.random() * 1.5;
+    span.style.setProperty('--dur', `${dur.toFixed(2)}s`);
+    span.style.setProperty('--delay', `${delay.toFixed(2)}s`);
+    confettiEl.appendChild(span);
+    setTimeout(() => span.remove(), (dur + delay) * 1000 + 100);
+  }
+
+  function startConfetti() {
+    if (!confettiEl) return;
+    stopConfetti();
+    // initial burst
+    for (let i = 0; i < 40; i++) spawnConfettiPiece();
+    // loop
+    confettiTimer = setInterval(() => {
+      for (let i = 0; i < 12; i++) spawnConfettiPiece();
+    }, 900);
+  }
+
+  function stopConfetti() {
+    if (confettiTimer) { clearInterval(confettiTimer); confettiTimer = null; }
+    if (confettiEl) confettiEl.innerHTML = '';
+  }
+
+  function showVictory() { 
+    if (victory) victory.classList.add('show'); 
+    startConfetti();
+  }
+  function hideVictory() { 
+    if (victory) victory.classList.remove('show'); 
+    stopConfetti();
+  }
+  // Success Splash FX (confetti + balloons)
+  let successConfettiTimer = null;
+  let successBalloonTimer = null;
+
+  function spawnSuccessConfettiPiece() {
+    if (!confettiSuccessEl) return;
+    const span = document.createElement('span');
+    span.className = 'confetti-piece';
+    span.textContent = confettiEmojis[Math.floor(Math.random() * confettiEmojis.length)];
+    const left = Math.random() * 100;
+    span.style.left = `${left}%`;
+    span.style.setProperty('--x', `${(Math.random() * 16 - 8).toFixed(2)}vw`);
+    const dur = 2.2 + Math.random() * 2.2;
+    const delay = Math.random() * 0.6;
+    span.style.setProperty('--dur', `${dur.toFixed(2)}s`);
+    span.style.setProperty('--delay', `${delay.toFixed(2)}s`);
+    confettiSuccessEl.appendChild(span);
+    setTimeout(() => span.remove(), (dur + delay) * 1000 + 100);
+  }
+
+  function spawnBalloonPiece() {
+    if (!balloonsSuccessEl) return;
+    const span = document.createElement('span');
+    span.className = 'balloon';
+    span.textContent = '🎈';
+    const left = Math.random() * 100;
+    span.style.left = `${left}%`;
+    span.style.setProperty('--x', `${(Math.random() * 12 - 6).toFixed(2)}vw`);
+    const dur = 2.8 + Math.random() * 2.4;
+    const delay = Math.random() * 0.6;
+    span.style.setProperty('--dur', `${dur.toFixed(2)}s`);
+    span.style.setProperty('--delay', `${delay.toFixed(2)}s`);
+    balloonsSuccessEl.appendChild(span);
+    setTimeout(() => span.remove(), (dur + delay) * 1000 + 200);
+  }
+
+  function startSuccessFX() {
+    if (!splashSuccess) return;
+    stopSuccessFX();
+    for (let i = 0; i < 24; i++) spawnSuccessConfettiPiece();
+    for (let i = 0; i < 8; i++) spawnBalloonPiece();
+    successConfettiTimer = setInterval(() => { for (let i = 0; i < 8; i++) spawnSuccessConfettiPiece(); }, 280);
+    successBalloonTimer = setInterval(() => { for (let i = 0; i < 3; i++) spawnBalloonPiece(); }, 400);
+  }
+
+  function stopSuccessFX() {
+    if (successConfettiTimer) { clearInterval(successConfettiTimer); successConfettiTimer = null; }
+    if (successBalloonTimer) { clearInterval(successBalloonTimer); successBalloonTimer = null; }
+    if (confettiSuccessEl) confettiSuccessEl.innerHTML = '';
+    if (balloonsSuccessEl) balloonsSuccessEl.innerHTML = '';
+  }
+
   if (victoryClose) victoryClose.addEventListener('click', hideVictory);
-  if (victory) victory.addEventListener('click', (e) => { if (e.target === victory) hideVictory(); });
+  if (victoryAgain) victoryAgain.addEventListener('click', () => {
+    // reset score and keep playing
+    sharedState.score = 0;
+    if (scoreEl) scoreEl.textContent = '0';
+    sharedState.current = generateChallenge(sharedState.mode);
+    if (challengeText) challengeText.innerHTML = challengeTextFor(sharedState.current);
+    updateLayoutForCurrent();
+    broadcastState();
+    resetBoard();
+    hideVictory();
+  });
   // Allow dismissing the splashes on click or Esc
-  [splashSuccess, splashFail].forEach(el => { if (el) el.addEventListener('click', () => el.classList.remove('show')); });
+  [splashSuccess, splashFail].forEach(el => {
+    if (el) el.addEventListener('click', () => {
+      el.classList.remove('show');
+      if (el === splashSuccess) stopSuccessFX();
+    });
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (splashSuccess) splashSuccess.classList.remove('show');
+      if (splashSuccess) { splashSuccess.classList.remove('show'); stopSuccessFX(); }
       if (splashFail) splashFail.classList.remove('show');
     }
   });
