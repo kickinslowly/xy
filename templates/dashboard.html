@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}Student Dashboard{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1>Student Dashboard</h1>
+    <p id="auth-note" class="muted">Sign in with Google to load your data.</p>
+
+    <div id="dash" hidden>
+      <div class="cards-grid">
+        <div class="card">
+          <h2>Per-Mode Summary</h2>
+          <div id="perMode" class="permode-grid"></div>
+        </div>
+        <div class="card">
+          <h2>Recent Activity</h2>
+          <ul id="recentList" class="recent-list"></ul>
+        </div>
+        <div class="card">
+          <h2>Achievements</h2>
+          <div id="achievements" class="achievements"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  function fmt(n){
+    if(n === null || n === undefined) return '—';
+    const v = Number(n);
+    return Number.isFinite(v) ? (Math.round(v*100)/100).toString() : '—';
+  }
+
+  async function loadDashboard(){
+    const token = localStorage.getItem('token');
+    const authNote = document.getElementById('auth-note');
+    const dash = document.getElementById('dash');
+    if(!token){
+      if (authNote) authNote.hidden = false;
+      if (dash) dash.hidden = true;
+      return;
+    }
+    authNote.hidden = true;
+    dash.hidden = false;
+    try{
+      const r = await fetch('/api/dashboard', { headers: { 'Authorization': 'Bearer ' + token }});
+      const data = await r.json();
+      if(!r.ok){
+        console.warn('Failed to load dashboard', data);
+        authNote.textContent = 'Could not load data. Please try again.';
+        authNote.hidden = false; dash.hidden = true; return;
+      }
+      renderPerMode(data.per_mode || {});
+      renderRecent(data.recent || []);
+      renderAchievements(data.achievements || []);
+    }catch(e){
+      console.error(e);
+      authNote.textContent = 'Network error.';
+      authNote.hidden = false; dash.hidden = true;
+    }
+  }
+
+  function renderPerMode(map){
+    const root = document.getElementById('perMode');
+    root.innerHTML = '';
+    const order = ['plane','line','battleship','memewars','ratios'];
+    order.forEach(m => {
+      const s = map[m] || {};
+      const div = document.createElement('div');
+      div.className = 'permode-card';
+      div.innerHTML = `
+        <div class="permode-title">${m.replace(/(^.|-.)*/g,'') || m}</div>
+        <div class="permode-metrics">
+          <div><span class="k">Total</span><span class="v">${s.total_games||0}</span></div>
+          <div><span class="k">Completed</span><span class="v">${s.wins_or_completed||0}</span></div>
+          <div><span class="k">Avg Score</span><span class="v">${fmt(s.avg_score)}</span></div>
+          <div><span class="k">Best</span><span class="v">${fmt(s.best_score)}</span></div>
+        </div>
+      `;
+      root.appendChild(div);
+    });
+  }
+
+  function renderRecent(list){
+    const ul = document.getElementById('recentList');
+    ul.innerHTML = '';
+    if(!list.length){
+      const li = document.createElement('li');
+      li.className = 'muted';
+      li.textContent = 'No activity yet. Play a game to get started!';
+      ul.appendChild(li); return;
+    }
+    list.forEach(r => {
+      const li = document.createElement('li');
+      const date = r.played_at ? new Date(r.played_at) : null;
+      const when = date ? date.toLocaleString() : '';
+      li.innerHTML = `<span class="tag">${r.mode}</span> <strong>${r.game_name||''}</strong> — ${r.outcome||'played'}${r.score!=null?` · score ${fmt(r.score)}`:''} <span class="muted">${when}</span>`;
+      ul.appendChild(li);
+    });
+  }
+
+  function renderAchievements(list){
+    const root = document.getElementById('achievements');
+    root.innerHTML = '';
+    if(!list.length){ root.textContent = 'No achievements defined.'; return; }
+    list.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'achievement' + (a.unlocked ? ' unlocked' : '');
+      const when = a.unlocked_at ? new Date(a.unlocked_at).toLocaleDateString() : '';
+      div.innerHTML = `
+        <div class="achv-icon">${a.unlocked ? '🏆' : '🔒'}</div>
+        <div class="achv-body">
+          <div class="achv-title">${a.title} <span class="chip">${a.mode}</span></div>
+          <div class="achv-desc">${a.description || ''}</div>
+          <div class="achv-meta">${a.unlocked ? 'Unlocked ' + when : 'Complete '+a.threshold+' to unlock'}</div>
+        </div>`;
+      root.appendChild(div);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', loadDashboard);
+  document.addEventListener('app:auth', loadDashboard);
+  document.addEventListener('app:logout', loadDashboard);
+})();
+</script>
+<style>
+.page-dashboard .cards-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 900px) { .page-dashboard .cards-grid { grid-template-columns: 1.2fr .8fr; } }
+.card { background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.permode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; }
+.permode-card { border: 1px solid #eee; border-radius: 8px; padding: .75rem; background: #fafafa; }
+.permode-title { font-weight: 600; margin-bottom: .5rem; text-transform: capitalize; }
+.permode-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem .5rem; }
+.permode-metrics .k { color: #666; font-size: .9rem; }
+.permode-metrics .v { font-weight: 600; }
+.recent-list { list-style: none; padding: 0; margin: 0; }
+.recent-list li { padding: .5rem 0; border-bottom: 1px solid #eee; }
+.recent-list li:last-child { border-bottom: 0; }
+.tag { background:#eef; color:#225; border-radius: 4px; padding: .1rem .4rem; margin-right: .25rem; font-size: .8rem; }
+.muted { color: #666; }
+.achievements { display: grid; gap: .5rem; }
+.achievement { display: grid; grid-template-columns: 36px 1fr; gap: .6rem; align-items: center; border:1px solid #eee; border-radius:8px; padding:.5rem .75rem; background:#fafafa; }
+.achievement.unlocked { border-color:#d7f2d7; background:#f6fff6; }
+.achv-icon { font-size: 1.5rem; }
+.achv-title { font-weight: 700; }
+.chip { font-size: .75rem; background:#eee; margin-left:.4rem; padding:.05rem .4rem; border-radius: 999px; }
+</style>
+{% endblock %}

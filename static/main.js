@@ -644,6 +644,17 @@
         hideFailToast();
         removeChallengeAnswerOverlays();
         showRewardToast();
+        // Record successful vertex challenge for dashboard/achievements
+        try {
+          if (window.recordResult) {
+            window.recordResult({
+              mode: 'plane',
+              game_name: 'Vertex Challenge',
+              outcome: 'success',
+              details_json: { x: currentChallenge.x, y: currentChallenge.y }
+            }).catch(() => {});
+          }
+        } catch (e) { /* ignore */ }
         setTimeout(() => {
           hideRewardToast();
           clearAllSilently();
@@ -731,6 +742,17 @@
         hideFailToast();
         removeChallengeAnswerOverlays();
         showRewardToast();
+        // Record successful line challenge for dashboard/achievements
+        try {
+          if (window.recordResult) {
+            window.recordResult({
+              mode: 'line',
+              game_name: 'Line Challenge',
+              outcome: 'success',
+              details_json: { m: currentChallenge.m, b: currentChallenge.b }
+            }).catch(() => {});
+          }
+        } catch (e) { /* ignore */ }
         setTimeout(() => {
           hideRewardToast();
           clearAllSilently();

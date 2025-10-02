@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Meme Dash{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <style>
+    html, body { height: 100%; }
+    body { display: grid; grid-template-rows: auto 1fr; }
+    main.page { display: grid; grid-template-rows: auto 1fr; }
+    .toolbar { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; background: #fff; }
+    .toolbar .group { display: inline-flex; gap: 8px; align-items: center; }
+    .pill { padding: 4px 8px; background: #f5f5f5; border-radius: 999px; font-size: 12px; }
+    .game-wrap { position: relative; display: grid; place-items: center; background: linear-gradient(#dff3ff, #ffffff); }
+    #gameCanvas { width: min(96vw, 1100px); height: min(70vh, 640px); background: #cfe8ff; border: 1px solid #c7def7; border-radius: 10px; image-rendering: pixelated; }
+    .hud { position: absolute; inset: 0; pointer-events: none; }
+    .hud .top-left { position: absolute; top: 8px; left: 8px; display: grid; gap: 6px; }
+    .hud .top-right { position: absolute; top: 8px; right: 8px; display: grid; gap: 6px; text-align: right; }
+    .hud .bottom-center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; }
+    .scoreboard { display: inline-flex; gap: 8px; background: rgba(255,255,255,0.75); padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.06); }
+    .scoreboard .meme { display: inline-flex; gap: 6px; align-items: center; background: #fff; padding: 4px 6px; border-radius: 8px; border: 1px solid #eee; }
+    .scoreboard .meme img { width: 22px; height: 22px; border-radius: 4px; }
+    .scoreboard .meme .count { font-weight: 800; min-width: 20px; text-align: center; }
+    .powerup { display: inline-flex; gap: 8px; align-items: center; background: #fffaf0; padding: 6px 10px; border: 1px solid #ffe0a3; border-radius: 999px; font-weight: 800; color: #b35b00; box-shadow: 0 4px 10px rgba(255,170,0,0.15); }
+    .powerup.hidden { display: none; }
+    .big-flash { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(255,255,255,0.85), rgba(255,255,255,0.2)); z-index: 10; }
+    .big-flash.show { display: flex; animation: flashpop 900ms ease-out; }
+    @keyframes flashpop { from { opacity: 0; transform: scale(1.06); } 35% { opacity: 1; transform: scale(1); } to { opacity: 0; } }
+    .warm-fuzzy { pointer-events: none; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,231,142,1) 35%, rgba(255,166,0,1) 100%); box-shadow: 0 10px 30px rgba(255,166,0,0.55); animation: puff 800ms ease-out forwards; }
+    @keyframes puff { from { opacity: 1; transform: translate(-50%, -50%) scale(0.6); } to { opacity: 0; transform: translate(-50%, -50%) scale(2.2); } }
+  </style>
+{% endblock %}
+
+{% block content %}
+<header class="app-header full-bleed" role="banner">
+  <nav class="toolbar panels" aria-label="Meme Dash controls">
+    <div class="group" role="group" aria-label="Collaboration status" style="margin-left:auto;">
+      <span id="presence" title="Number of users currently online in this room">• Offline</span>
+      <span id="roomPin" class="pill">PIN: —</span>
+      <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+      <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join</button>
+    </div>
+  </nav>
+</header>
+
+<main class="game-wrap">
+  <canvas id="gameCanvas" width="1100" height="640" aria-label="Meme Dash"></canvas>
+  <div class="hud" aria-live="polite">
+    <div class="top-left">
+      <div id="scoreboard" class="scoreboard" title="Collect 5 of each meme to win!"></div>
+    </div>
+    <div class="top-right">
+      <div id="powerupPill" class="powerup hidden">POWERED UP! <span id="powerupCountdown">10</span>s</div>
+    </div>
+    <div class="bottom-center">
+      <small class="hint">WASD / Arrow keys to move, Space/Up to jump. First to 5 of every meme wins. Getting 5 of one meme gives a temporary power-up!</small>
+    </div>
+    <div id="bigFlash" class="big-flash"><h1 style="font-size:clamp(28px,6vmin,64px);">POWER UP!</h1></div>
+  </div>
+</main>
+
+<!-- Share QR modal (reused by JS) -->
+<div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Share session</h3>
+      <button id="closeQrModal" type="button" aria-label="Close">×</button>
+    </div>
+    <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
+      <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
+      <div style="min-width:260px; max-width:520px;">
+        <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
+        <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
+        <input id="qrLinkText" type="text" readonly style="width:100%;" />
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  window.AVAILABLE_MEME_IMAGES = {{ available_images|tojson|safe }};
+</script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='meme_dash.js') }}"></script>
+{% endblock %}

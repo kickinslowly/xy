@@ -339,6 +339,20 @@
         // Let the success splash play first
         setTimeout(() => showVictory(), 900);
       }
+      // Record this successful completion for dashboard/achievements (if authenticated)
+      try {
+        if (window.recordResult) {
+          const payload = {
+            mode: 'ratios',
+            game_name: labelForMode(prevMode),
+            outcome: 'success',
+            room_pin: room,
+            details_json: { challenge: ch }
+          };
+          // Fire-and-forget; backend counts successes for achievements
+          window.recordResult(payload).catch(() => {});
+        }
+      } catch (e) { /* ignore */ }
       sharedState.current = generateChallenge(sharedState.mode);
       challengeText.innerHTML = challengeTextFor(sharedState.current);
       updateLayoutForCurrent();

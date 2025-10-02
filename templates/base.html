@@ -22,7 +22,20 @@
             <a href="{{ url_for('line_mode') }}" class="mode-link {% if request.path == url_for('line_mode') %}is-active{% endif %}" {% if request.path == url_for('line_mode') %}aria-current="page"{% endif %}>Line Graph</a>
             <a href="{{ url_for('battleship') }}" class="mode-link {% if request.path == url_for('battleship') %}is-active{% endif %}" {% if request.path == url_for('battleship') %}aria-current="page"{% endif %}>Battleship</a>
             <a href="{{ url_for('meme_wars') }}" class="mode-link {% if request.path == url_for('meme_wars') %}is-active{% endif %}" {% if request.path == url_for('meme_wars') %}aria-current="page"{% endif %}>Meme Wars</a>
+            <a href="{{ url_for('meme_dash') }}" class="mode-link {% if request.path == url_for('meme_dash') %}is-active{% endif %}" {% if request.path == url_for('meme_dash') %}aria-current="page"{% endif %}>Meme Dash</a>
             <a href="{{ url_for('ratios_mode') }}" class="mode-link {% if request.path == url_for('ratios_mode') %}is-active{% endif %}" {% if request.path == url_for('ratios_mode') %}aria-current="page"{% endif %}>Ratios</a>
+            <a href="{{ url_for('dashboard_page') }}" class="mode-link {% if request.path == url_for('dashboard_page') %}is-active{% endif %}" {% if request.path == url_for('dashboard_page') %}aria-current="page"{% endif %}>Dashboard</a>
+          </div>
+          <div class="auth-controls">
+            {% if GOOGLE_CLIENT_ID %}
+              <div id="auth-signed-out" class="auth-signed-out">
+                <div class="g_id_signin" data-type="standard" data-size="medium"></div>
+              </div>
+              <div id="auth-signed-in" class="auth-signed-in" hidden>
+                <span class="user-pill" aria-live="polite">Signed in</span>
+                <button id="logout-btn" type="button" class="btn-link">Log out</button>
+              </div>
+            {% endif %}
           </div>
           {% block top_actions %}{% endblock %}
         </nav>
@@ -38,6 +51,77 @@
         <small>© 2025 — Aaron Allen</small>
       </div>
     </footer>
+
+    {% if GOOGLE_CLIENT_ID %}
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <div id="g_id_onload"
+         data-client_id="{{ GOOGLE_CLIENT_ID }}"
+         data-callback="onGoogleSignIn"
+         data-auto_prompt="false"></div>
+    <script>
+      function updateAuthUI() {
+        const token = localStorage.getItem('token');
+        const signedOut = document.getElementById('auth-signed-out');
+        const signedIn = document.getElementById('auth-signed-in');
+        if (signedOut) signedOut.hidden = !!token;
+        if (signedIn) signedIn.hidden = !token;
+        // If already signed in, prevent any Google One Tap/prompt from showing
+        if (token) {
+          try { google.accounts.id.cancel(); } catch (e) {}
+          try { google.accounts.id.disableAutoSelect(); } catch (e) {}
+        }
+      }
+
+      async function onGoogleSignIn(resp) {
+        try {
+          const r = await fetch('/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token: resp.credential })
+          });
+          const data = await r.json();
+          if (r.ok && data && data.token) {
+            localStorage.setItem('token', data.token);
+            if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+            updateAuthUI();
+            document.dispatchEvent(new CustomEvent('app:auth', { detail: data }));
+          } else {
+            console.warn('Auth failed', data);
+          }
+        } catch (e) { console.error('Auth error', e); }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        updateAuthUI();
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', () => {
+            try { google.accounts.id.disableAutoSelect(); } catch (e) {}
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            updateAuthUI();
+            document.dispatchEvent(new CustomEvent('app:logout'));
+          });
+        }
+      });
+
+      // Lightweight global helper for recording results
+      window.recordResult = async function(payload){
+        try{
+          const token = localStorage.getItem('token');
+          if(!token){ console.warn('No auth token; cannot record result'); return { ok:false, error:'not_authenticated' }; }
+          const res = await fetch('/api/results', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify(payload || {})
+          });
+          const data = await res.json().catch(() => ({}));
+          if(!res.ok){ console.warn('recordResult failed', data); return { ok:false, error:data }; }
+          return data;
+        }catch(e){ console.error('recordResult error', e); return { ok:false, error:e?.message||'error' }; }
+      };
+    </script>
+    {% endif %}
 
     {% block extra_scripts %}{% endblock %}
   </body>
