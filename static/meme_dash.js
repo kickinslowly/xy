@@ -296,21 +296,34 @@
     // Ensure our player exists (in case owner created state without us yet)
     addMeIfMissing();
 
-    // If we're not the owner, preserve our locally simulated kinematics to avoid rubberbanding
-    // This lets a joining client move smoothly even if the host isn't simulating their input.
+    // If we're not the owner, preserve our locally simulated kinematics to avoid rubberbanding,
+    // but accept authoritative remote positions if they differ too much (e.g., teleports after power hits).
     if (prev && state.ownerId !== clientId) {
       const localMe = prev.players && prev.players[clientId];
       if (localMe) {
+        const remoteMe = state.players && state.players[clientId];
+        const hasRemote = !!remoteMe;
+        const dist = hasRemote ? Math.hypot((remoteMe.x || 0) - (localMe.x || 0), (remoteMe.y || 0) - (localMe.y || 0)) : 0;
+        const bigDelta = hasRemote && dist > 80; // threshold before snapping to owner
         const incomingMe = state.players[clientId] || (state.players[clientId] = {});
-        incomingMe.x = localMe.x;
-        incomingMe.y = localMe.y;
-        incomingMe.vx = localMe.vx;
-        incomingMe.vy = localMe.vy;
-        incomingMe.grounded = localMe.grounded;
-        // Preserve cosmetic/local-only fields too
-        incomingMe.color = incomingMe.color || localMe.color;
-        incomingMe.name = incomingMe.name || localMe.name;
-        incomingMe.id = incomingMe.id || localMe.id || clientId;
+        if (bigDelta) {
+          // Adopt authoritative owner position/velocity; keep cosmetics
+          incomingMe.color = incomingMe.color || localMe.color;
+          incomingMe.name = incomingMe.name || localMe.name;
+          incomingMe.id = incomingMe.id || localMe.id || clientId;
+          // Do not overwrite x/y/vx/vy with local; accept remote values already in incomingMe
+        } else {
+          // Preserve local smooth movement
+          incomingMe.x = localMe.x;
+          incomingMe.y = localMe.y;
+          incomingMe.vx = localMe.vx;
+          incomingMe.vy = localMe.vy;
+          incomingMe.grounded = localMe.grounded;
+          // Preserve cosmetic/local-only fields too
+          incomingMe.color = incomingMe.color || localMe.color;
+          incomingMe.name = incomingMe.name || localMe.name;
+          incomingMe.id = incomingMe.id || localMe.id || clientId;
+        }
       }
     }
 
