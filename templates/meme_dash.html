@@ -32,12 +32,15 @@
 {% block content %}
 <header class="app-header full-bleed" role="banner">
   <nav class="toolbar panels" aria-label="Meme Dash controls">
-    <div class="group" role="group" aria-label="Collaboration status" style="margin-left:auto;">
-      <span id="presence" title="Number of users currently online in this room">• Offline</span>
-      <span id="roomPin" class="pill">PIN: —</span>
-      <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
-      <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join</button>
-    </div>
+    <details class="panel panel-sm" style="margin-left:auto;">
+      <summary>Session</summary>
+      <div class="group" role="group" aria-label="Collaboration status">
+        <span id="presence" title="Number of users currently online in this room">• Offline</span>
+        <span id="roomPin" class="pill">PIN: —</span>
+        <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
+        <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join</button>
+      </div>
+    </details>
   </nav>
 </header>
 
@@ -48,12 +51,28 @@
       <div id="scoreboard" class="scoreboard" title="Collect 5 of each meme to win!"></div>
     </div>
     <div class="top-right">
-      <div id="powerupPill" class="powerup hidden">POWERED UP! <span id="powerupCountdown">10</span>s</div>
+      <div id="powerupPill" class="powerup hidden" title="While powered, colliding with another player blasts them back to respawn.">POWERED UP! <span id="powerupCountdown">10</span>s</div>
     </div>
     <div class="bottom-center">
-      <small class="hint">WASD / Arrow keys to move, Space/Up to jump. First to 5 of every meme wins. Getting 5 of one meme gives a temporary power-up!</small>
+      <small class="hint">WASD / Arrow keys to move, Space/Up to jump. First to 5 of every meme wins. Getting 5 of one meme gives a temporary power-up — bump into others to blast them back to respawn.</small>
     </div>
     <div id="bigFlash" class="big-flash"><h1 style="font-size:clamp(28px,6vmin,64px);">POWER UP!</h1></div>
+  </div>
+
+  <!-- Full-screen celebration overlay -->
+  <div id="celebrateOverlay" class="celebrate-overlay" hidden aria-hidden="true">
+    <div class="celebrate-bg"></div>
+    <div id="fxConfetti" class="fx-layer"></div>
+    <div id="fxEmojis" class="fx-layer"></div>
+    <div id="fxBalloons" class="fx-layer"></div>
+    <section class="celebrate-card" role="dialog" aria-live="assertive" aria-label="Game result">
+      <div class="celebrate-emoji" aria-hidden="true">🎉</div>
+      <h2 id="celebrateTitle" class="celebrate-title">You Win!</h2>
+      <p id="celebrateSubtitle" class="celebrate-subtitle">First to collect all the memes!</p>
+      <div class="celebrate-actions">
+        <button id="celebrateCloseBtn" class="btn btn-sun" type="button">Play Again</button>
+      </div>
+    </section>
   </div>
 </main>
 

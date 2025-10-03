@@ -145,13 +145,14 @@
 {% block content %}
 <header class="app-header full-bleed" role="banner">
   <nav class="toolbar panels" aria-label="Battleship controls">
-    <div class="panel" style="margin-left:auto;">
+    <details class="panel panel-sm" style="margin-left:auto;">
+      <summary>Session</summary>
       <div class="group" role="group" aria-label="Collaboration status">
         <span id="presence" title="Number of users currently online in this room">• Offline</span>
         <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
         <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
       </div>
-    </div>
+    </details>
 
 
     <div class="panel" id="lobbyPanel">

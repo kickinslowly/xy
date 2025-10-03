@@ -689,6 +689,32 @@ def handle_state_update(data):
     emit('state_update', {'room': room, 'mode': mode, 'clientId': client_id, 'state': state}, room=room, include_self=False)
 
 
+@socketio.on('memedash_win')
+def handle_memedash_win(data):
+    room = (data or {}).get('room') or request.args.get('room') or request.path or '/'
+    mode = (data or {}).get('mode') or 'memedash'
+    winner_id = (data or {}).get('winnerId')
+    winner_name = (data or {}).get('winnerName')
+    score = (data or {}).get('score')
+    try:
+        emit('memedash_win', {'room': room, 'mode': mode, 'winnerId': winner_id, 'winnerName': winner_name, 'score': score}, room=room)
+    except Exception:
+        pass
+
+@socketio.on('input_update')
+def handle_input_update(data):
+    # Relay per-player input to the room so the owner can simulate all players
+    room = (data or {}).get('room') or request.args.get('room') or request.path or '/'
+    mode = (data or {}).get('mode') or 'plane'
+    client_id = (data or {}).get('clientId')
+    input_state = (data or {}).get('input') or {}
+    try:
+        # Broadcast to everyone except the sender; the owner will consume it
+        emit('input_update', {'room': room, 'mode': mode, 'clientId': client_id, 'input': input_state}, room=room, include_self=False)
+    except Exception:
+        pass
+
+
 if __name__ == '__main__':
     # Use SocketIO server to enable WebSockets and listen on all interfaces for LAN access
     host = os.environ.get('HOST', '0.0.0.0')

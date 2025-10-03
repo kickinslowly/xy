@@ -9,6 +9,14 @@
   const powerupPill = qs('#powerupPill');
   const powerupCountdownEl = qs('#powerupCountdown');
   const bigFlash = qs('#bigFlash');
+  // Celebration overlay elements
+  const celebrateOverlay = qs('#celebrateOverlay');
+  const celebrateTitleEl = qs('#celebrateTitle');
+  const celebrateSubtitleEl = qs('#celebrateSubtitle');
+  const celebrateCloseBtn = qs('#celebrateCloseBtn');
+  const fxConfetti = qs('#fxConfetti');
+  const fxEmojis = qs('#fxEmojis');
+  const fxBalloons = qs('#fxBalloons');
 
   const canvas = qs('#gameCanvas');
   const ctx = canvas.getContext('2d');
@@ -57,7 +65,7 @@
   // Magnet power-up settings
   const MAGNET_SPAWN_MS = 30000; // spawn every 30s
   const MAGNET_DURATION_MS = 5000; // 5 seconds effect
-  const MAGNET_RANGE = Math.hypot(canvas.width, canvas.height) * 0.05; // ~5% of screen diagonal
+  const MAGNET_RANGE = Math.hypot(canvas.width, canvas.height) * 0.05 * 1.33; // +33% radius (~6.65% of screen diagonal)
   const MAGNET_PULL_SPEED = 520; // px/s pull speed toward player
 
   // State kept in rooms_state[room]['memedash']
@@ -67,6 +75,14 @@
   const my = {
     input: { left: false, right: false, up: false },
   };
+
+  // Remote input state for other players (filled from network)
+  const remoteInputs = {};
+  const EMPTY_INPUT = { left: false, right: false, up: false };
+
+  function sanitizeInput(x){
+    return { left: !!(x && x.left), right: !!(x && x.right), up: !!(x && x.up) };
+  }
 
   // Player prototype
   function defaultPlayer(id) {
@@ -242,6 +258,26 @@
     socket.on('presence', (p) => { if (p && p.room === room) setPresence(p.count, true); });
     socket.on('state', (msg) => { if (msg && msg.room === room && msg.mode === mode) applyRemoteState(msg.state); });
     socket.on('state_update', (msg) => { if (msg && msg.room === room && msg.mode === mode) applyRemoteState(msg.state); });
+    socket.on('input_update', (msg) => {
+      if (msg && msg.room === room && msg.mode === mode && msg.clientId && msg.clientId !== clientId) {
+        remoteInputs[msg.clientId] = sanitizeInput(msg.input);
+      }
+    });
+
+    // Game result broadcast: show winner/loser overlays for all clients
+    socket.on('memedash_win', (msg) => {
+      try {
+        if (!msg || msg.room !== room || msg.mode !== mode) return;
+        const winnerId = msg.winnerId;
+        const winnerName = msg.winnerName || 'Player';
+        const isYou = (winnerId === clientId);
+        const outcome = isYou ? 'win' : 'lose';
+        showCelebration(outcome, { winnerName, isYou, score: msg.score });
+        // Record result (best-effort)
+        const payload = { mode: 'memedash', game_name: 'Meme Dash', outcome: outcome, score: (msg.score || 0), room_pin: window.currentSessionPin };
+        window.recordResult?.(payload);
+      } catch(_) { }
+    });
   }
 
   function addMeIfMissing(){
@@ -299,15 +335,29 @@
   window.addEventListener('keydown', (e) => {
     if (['INPUT','TEXTAREA'].includes(e.target?.tagName)) return;
     keys.add(e.key);
+    updateInput();
+    sendInputUpdate();
   });
   window.addEventListener('keyup', (e) => {
     keys.delete(e.key);
+    updateInput();
+    sendInputUpdate();
   });
 
   function updateInput(){
     my.input.left = keys.has('a') || keys.has('A') || keys.has('ArrowLeft');
     my.input.right = keys.has('d') || keys.has('D') || keys.has('ArrowRight');
     my.input.up = keys.has('w') || keys.has('W') || keys.has('ArrowUp') || keys.has(' ');
+  }
+
+  let lastInputSent = { left: false, right: false, up: false };
+  function sendInputUpdate(){
+    if (!socket || !room) return;
+    const cur = { left: !!my.input.left, right: !!my.input.right, up: !!my.input.up };
+    if (cur.left !== lastInputSent.left || cur.right !== lastInputSent.right || cur.up !== lastInputSent.up) {
+      lastInputSent = { ...cur };
+      try { socket.emit('input_update', { room, mode, clientId, input: cur }); } catch(_){ }
+    }
   }
 
   // Game loop
@@ -389,7 +439,8 @@
     const speedScale = 1 - 0.6 * progress; // slower near win; never below 0.4
     const s = applySlow ? clamp(speedScale, 0.4, 1) : 1;
 
-    const accelX = (my.input.left && p.id === clientId ? -1 : 0) + (my.input.right && p.id === clientId ? 1 : 0);
+    const inp = (p.id === clientId) ? my.input : (remoteInputs[p.id] || EMPTY_INPUT);
+    const accelX = (inp.left ? -1 : 0) + (inp.right ? 1 : 0);
     const targetVx = accelX * BASE_SPEED * s;
     const ax = (targetVx - p.vx) * 10 * dt; // simple PD toward target
     p.vx += ax;
@@ -398,7 +449,7 @@
     // Keep gravity constant so higher jump velocity yields a higher apex.
     const jumpScale = clamp(1 + (1 - s), 1, 1.8); // at min speed (s=0.4) -> 1.6x; cap at 1.8x
     const gravity = GRAVITY;
-    if ((my.input.up && p.id === clientId) && p.grounded) {
+    if (inp.up && p.grounded) {
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.grounded = false;
     }
@@ -585,13 +636,17 @@
   }
 
   function announceWin(p){
-    // Simple banner and record
+    // Broadcast a synchronized win event to all clients (including the winner)
     try {
-      const msg = `${p.name || 'Player'} wins!`;
-      alert(msg);
-      // Best-effort telemetry
-      window.recordResult?.({ mode: 'memedash', game_name: 'Meme Dash', outcome: (p.id === clientId ? 'win' : 'completed'), score: p.total, room_pin: window.currentSessionPin });
-    } catch(_){}
+      if (socket) {
+        socket.emit('memedash_win', { room, mode, winnerId: p.id, winnerName: p.name || 'Player', score: p.total });
+      } else {
+        // Fallback offline: show locally
+        const isYou = (p.id === clientId);
+        showCelebration(isYou ? 'win' : 'lose', { winnerName: p.name || 'Player', isYou });
+        window.recordResult?.({ mode: 'memedash', game_name: 'Meme Dash', outcome: (isYou ? 'win' : 'loss'), score: p.total, room_pin: window.currentSessionPin });
+      }
+    } catch(_){ }
 
     // Reset minimal: clear memes and some progress to allow replay quickly
     for (const id of Object.keys(state.players)) {
@@ -848,6 +903,113 @@
         iv = setInterval(update, 250);
       }
     } catch(_){ }
+  }
+
+  // Celebration overlay logic
+  const WIN_EMOJIS = ['🎉','🎊','🤑','💸','💰','🥳','🎈','💵','⭐'];
+  const LOSE_EMOJIS = ['💔','😢','💀','☔','🪦','🥀','😞','🫥','🌧️'];
+  function showCelebration(outcome, { winnerName = 'Player', isYou = false } = {}) {
+    try {
+      if (!celebrateOverlay) return;
+      celebrateOverlay.hidden = false;
+      celebrateOverlay.setAttribute('data-outcome', outcome);
+      celebrateOverlay.setAttribute('aria-hidden', 'false');
+      if (celebrateTitleEl) celebrateTitleEl.textContent = isYou ? 'You Win!' : (outcome === 'win' ? `${winnerName} Wins!` : 'You Lost!');
+      if (celebrateSubtitleEl) {
+        if (outcome === 'win') {
+          celebrateSubtitleEl.textContent = isYou ? 'First to collect all the memes!' : `Winner: ${winnerName}`;
+        } else {
+          celebrateSubtitleEl.textContent = `Winner: ${winnerName} — better luck next round!`;
+        }
+      }
+      const rootW = window.innerWidth || document.documentElement.clientWidth || 1200;
+      const confettiCount = Math.max(60, Math.min(180, Math.floor(rootW / 8)));
+      const emojiCount = Math.max(24, Math.min(64, Math.floor(rootW / 30)));
+      const balloonCount = outcome === 'win' ? Math.max(14, Math.min(28, Math.floor(rootW / 80))) : Math.max(10, Math.min(20, Math.floor(rootW / 100)));
+      // Clear existing
+      [fxConfetti, fxEmojis, fxBalloons].forEach(layer => { if (layer) layer.innerHTML = ''; });
+      // Confetti
+      if (fxConfetti) {
+        for (let i = 0; i < confettiCount; i++) {
+          const d = document.createElement('div');
+          d.className = 'fx-piece confetti c' + ((i % 5) + 1);
+          const x = (Math.random() * 100).toFixed(2) + 'vw';
+          const delay = (Math.random() * 0.8).toFixed(2) + 's';
+          const dur = (2.8 + Math.random()*2.6).toFixed(2) + 's';
+          d.style.left = x;
+          d.style.top = (-10 - Math.random()*30) + 'vh';
+          d.style.setProperty('--x', (Math.random()*10-5).toFixed(2) + 'vw');
+          d.style.setProperty('--delay', delay);
+          d.style.setProperty('--dur', dur);
+          if (outcome === 'lose') {
+            d.style.background = ''; // color via CSS class for loss
+          }
+          fxConfetti.appendChild(d);
+        }
+      }
+      // Emojis
+      if (fxEmojis) {
+        const set = outcome === 'win' ? WIN_EMOJIS : LOSE_EMOJIS;
+        for (let i = 0; i < emojiCount; i++) {
+          const s = document.createElement('div');
+          s.className = 'fx-piece emoji';
+          s.textContent = set[i % set.length];
+          const x = (Math.random() * 100).toFixed(2) + 'vw';
+          const delay = (Math.random() * 1.2).toFixed(2) + 's';
+          const dur = (3.2 + Math.random()*3.5).toFixed(2) + 's';
+          s.style.left = x;
+          s.style.top = (-12 - Math.random()*20) + 'vh';
+          s.style.setProperty('--x', (Math.random()*12-6).toFixed(2) + 'vw');
+          s.style.setProperty('--delay', delay);
+          s.style.setProperty('--dur', dur);
+          fxEmojis.appendChild(s);
+        }
+      }
+      // Balloons: rise on win, fall on loss (reuse emoji class with fall anim for loss)
+      if (fxBalloons) {
+        const balloonEmoji = outcome === 'win' ? '🎈' : '🎈';
+        for (let i = 0; i < balloonCount; i++) {
+          const b = document.createElement('div');
+          b.className = 'fx-piece balloon';
+          b.textContent = balloonEmoji;
+          const x = (Math.random() * 100).toFixed(2) + 'vw';
+          const delay = (Math.random() * 0.8).toFixed(2) + 's';
+          const dur = (5.5 + Math.random()*3.5).toFixed(2) + 's';
+          b.style.left = x;
+          if (outcome === 'win') {
+            b.style.top = '106vh';
+          } else {
+            // for loss, let them fall like deflated balloons
+            b.className = 'fx-piece emoji';
+            b.style.top = (-12 - Math.random()*10) + 'vh';
+          }
+          b.style.setProperty('--x', (Math.random()*14-7).toFixed(2) + 'vw');
+          b.style.setProperty('--delay', delay);
+          b.style.setProperty('--dur', dur);
+          fxBalloons.appendChild(b);
+        }
+      }
+      // Close button
+      if (celebrateCloseBtn) {
+        celebrateCloseBtn.onclick = hideCelebration;
+      }
+      // Auto-hide in 5.5s
+      clearTimeout(showCelebration._t);
+      showCelebration._t = setTimeout(hideCelebration, 5500);
+    } catch(e) { console.warn('celebration error', e); }
+  }
+  function hideCelebration(){
+    try {
+      if (!celebrateOverlay) return;
+      celebrateOverlay.hidden = true;
+      celebrateOverlay.setAttribute('aria-hidden','true');
+      [fxConfetti, fxEmojis, fxBalloons].forEach(layer => { if (layer) layer.innerHTML = ''; });
+    } catch(_){ }
+  }
+
+  // Hook close button early
+  if (celebrateCloseBtn) {
+    celebrateCloseBtn.addEventListener('click', hideCelebration);
   }
 
   // Utility

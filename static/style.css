@@ -522,3 +522,45 @@ input[type="color"] { padding: 0; height: 32px; width: 38px; border-radius: 10px
 .fail-toast.show .fail-card { transform: scale(1); opacity: 1; }
 .fail-emoji { font-size: 22px; }
 .fail-text { font-weight: 800; font-size: 16px; color: #7f1d1d; }
+
+
+/* Meme Dash Celebration Overlay */
+.celebrate-overlay[hidden] { display: none !important; }
+.celebrate-overlay { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center; overflow: hidden; pointer-events: auto; }
+.celebrate-overlay[data-outcome="win"] .celebrate-bg { background: radial-gradient(80% 60% at 50% 40%, rgba(255,255,255,0.85), rgba(255,230,0,0.35)); backdrop-filter: blur(4px) saturate(1.15); }
+.celebrate-overlay[data-outcome="lose"] .celebrate-bg { background: radial-gradient(80% 60% at 50% 40%, rgba(0,0,0,0.55), rgba(0,0,0,0.75)); backdrop-filter: blur(3px) saturate(0.8); }
+.celebrate-overlay .celebrate-bg { position: absolute; inset: 0; }
+.celebrate-overlay .fx-layer { position: absolute; inset: -10% -5%; pointer-events: none; }
+.celebrate-card { position: relative; z-index: 2; background: linear-gradient(180deg, #ffffff, #fff8e6); border: 2px solid rgba(255,200,0,0.6); border-radius: 18px; padding: 20px 22px; box-shadow: 0 26px 60px rgba(0,0,0,0.22), 0 10px 24px rgba(0,0,0,0.12); min-width: min(92vw, 460px); text-align: center; }
+.celebrate-title { margin: 6px 0 6px; font-size: clamp(28px, 6vmin, 58px); line-height: 1.05; letter-spacing: 0.3px; }
+.celebrate-subtitle { margin: 0 0 10px; font-size: clamp(14px, 2.4vmin, 20px); color: #4b5563; }
+.celebrate-emoji { font-size: clamp(32px, 7vmin, 72px); filter: drop-shadow(0 8px 20px rgba(0,0,0,0.2)); }
+.celebrate-actions { display: flex; justify-content: center; gap: 12px; margin-top: 6px; }
+
+/* Loss variant styling */
+.celebrate-overlay[data-outcome="lose"] .celebrate-card { background: linear-gradient(180deg, #16181d, #101217); color: #e5e7eb; border-color: rgba(148,163,184,0.35); }
+.celebrate-overlay[data-outcome="lose"] .celebrate-subtitle { color: #9ca3af; }
+.celebrate-overlay[data-outcome="lose"] #celebrateCloseBtn { --b1: #475569; }
+
+/* FX pieces */
+.fx-piece { position: absolute; will-change: transform, opacity; user-select: none; }
+.fx-piece.confetti { width: 10px; height: 16px; border-radius: 2px; opacity: 0.95; animation: fall var(--dur, 3.5s) linear var(--delay, 0s) forwards, spin var(--dur, 3.5s) linear var(--delay, 0s) forwards; }
+.fx-piece.emoji { font-size: clamp(18px, 3.2vmin, 30px); animation: fall var(--dur, 4.5s) linear var(--delay, 0s) forwards, sway var(--dur, 4.5s) ease-in-out var(--delay, 0s) forwards; }
+.fx-piece.balloon { font-size: clamp(26px, 4.2vmin, 38px); animation: rise var(--dur, 6.5s) ease-in var(--delay, 0s) forwards, sway var(--dur, 6.5s) ease-in-out var(--delay, 0s) forwards; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.2)); }
+
+/* Gray/blue loss confetti and hearts */
+.celebrate-overlay[data-outcome="lose"] .fx-piece.confetti { background: linear-gradient(180deg, #94a3b8, #6b7280); }
+.celebrate-overlay[data-outcome="lose"] .fx-piece.emoji { filter: grayscale(0.4); }
+
+/* Keyframes */
+@keyframes fall { from { transform: translate3d(var(--x, 0), -12vh, 0) rotate(0deg); opacity: 1; } to { transform: translate3d(var(--x, 0), 112vh, 0) rotate(720deg); opacity: 0.9; } }
+@keyframes rise { from { transform: translate3d(var(--x, 0), 110vh, 0); opacity: 0.95; } to { transform: translate3d(calc(var(--x, 0) + 4vw), -16vh, 0); opacity: 0.9; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(540deg); } }
+@keyframes sway { 0% { transform: translateX(calc(var(--x, 0) + -3vw)); } 50% { transform: translateX(calc(var(--x, 0) + 3vw)); } 100% { transform: translateX(calc(var(--x, 0) + -3vw)); } }
+
+/* Win palette confetti colors */
+.celebrate-overlay[data-outcome="win"] .confetti.c1 { background: #ff4da6; }
+.celebrate-overlay[data-outcome="win"] .confetti.c2 { background: #ffd84d; }
+.celebrate-overlay[data-outcome="win"] .confetti.c3 { background: #36d1ff; }
+.celebrate-overlay[data-outcome="win"] .confetti.c4 { background: #74f0a7; }
+.celebrate-overlay[data-outcome="win"] .confetti.c5 { background: #7a5cff; }
