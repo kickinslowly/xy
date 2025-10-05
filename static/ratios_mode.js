@@ -169,7 +169,25 @@
   function imgBadge(src) { return `<img src="${src}" alt="meme" style="width:28px; height:28px; object-fit:contain; vertical-align:middle; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.15); background:#fff; margin:0 4px;"/>`; }
   function challengeTextFor(ch) {
     if (!ch) return 'Loading...';
-    if (ch.type === 'equiv') return `Create an equivalent ratio to ${formatRatio(ch.a, ch.b)} using ${imgBadge(ch.aSrc)} and ${imgBadge(ch.bSrc)}.`;
+    if (ch.type === 'equiv') {
+      return `
+        <div class="rp-wrap">
+          <div class="rp-label">Create an equivalent ratio to</div>
+          <div class="ratio-prompt" role="group" aria-label="Equivalent ratio">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers">
+              <span class="rp-num">${ch.a}</span>
+              <span class="rp-colon">:</span>
+              <span class="rp-num">${ch.b}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     if (ch.type === 'partwhole') {
       const which = ch.which === 'b' ? 'b' : 'a';
       const whichLabel = which === 'a' ? 'meme A' : 'meme B';
@@ -207,7 +225,25 @@
         </div>
       `;
     }
-    if (ch.type === 'partpart') return `Part-to-part: ${imgBadge(ch.aSrc)} ×${ch.a} : ${imgBadge(ch.bSrc)} ×${ch.b}`;
+    if (ch.type === 'partpart') {
+      return `
+        <div class="rp-wrap">
+          <div class="rp-label">Part-to-part ratio</div>
+          <div class="ratio-prompt" role="group" aria-label="Part-to-part ratio">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers">
+              <span class="rp-num">${ch.a}</span>
+              <span class="rp-colon">:</span>
+              <span class="rp-num">${ch.b}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     // Create-this-ratio: show two memes with a big number centered beneath each and colons between
     if (ch.type === 'create') {
       return `
