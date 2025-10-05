@@ -651,7 +651,7 @@
               mode: 'plane',
               game_name: 'Vertex Challenge',
               outcome: 'success',
-              details_json: { x: currentChallenge.x, y: currentChallenge.y }
+              details_json: { challenge_type: 'vertex', correct: true, x: currentChallenge.x, y: currentChallenge.y }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
@@ -666,6 +666,16 @@
         addChallengeAnswerVertex();
         draw();
         showFailToast();
+        try {
+          if (window.recordResult) {
+            window.recordResult({
+              mode: 'plane',
+              game_name: 'Vertex Challenge',
+              outcome: 'incorrect',
+              details_json: { challenge_type: 'vertex', correct: false, x: newVertex.x, y: newVertex.y }
+            }).catch(() => {});
+          }
+        } catch (e) { /* ignore */ }
         wrongTimer = setTimeout(() => {
           wrongTimer = null;
           hideFailToast();
@@ -746,10 +756,10 @@
         try {
           if (window.recordResult) {
             window.recordResult({
-              mode: 'line',
+              mode: 'plane',
               game_name: 'Line Challenge',
               outcome: 'success',
-              details_json: { m: currentChallenge.m, b: currentChallenge.b }
+              details_json: { challenge_type: 'line', correct: true, m: currentChallenge.m, b: currentChallenge.b }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
@@ -766,6 +776,16 @@
         addChallengeAnswerLine();
         draw();
         showFailToast();
+        try {
+          if (window.recordResult) {
+            window.recordResult({
+              mode: 'plane',
+              game_name: 'Line Challenge',
+              outcome: 'incorrect',
+              details_json: { challenge_type: 'line', correct: false, m: currentChallenge.m, b: currentChallenge.b }
+            }).catch(() => {});
+          }
+        } catch (e) { /* ignore */ }
         // Linger for 3 seconds then clear and prompt to try again
         wrongTimer = setTimeout(() => {
           wrongTimer = null;

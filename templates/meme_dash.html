@@ -26,12 +26,33 @@
     @keyframes flashpop { from { opacity: 0; transform: scale(1.06); } 35% { opacity: 1; transform: scale(1); } to { opacity: 0; } }
     .warm-fuzzy { pointer-events: none; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,231,142,1) 35%, rgba(255,166,0,1) 100%); box-shadow: 0 10px 30px rgba(255,166,0,0.55); animation: puff 800ms ease-out forwards; }
     @keyframes puff { from { opacity: 1; transform: translate(-50%, -50%) scale(0.6); } to { opacity: 0; transform: translate(-50%, -50%) scale(2.2); } }
+    /* TERMINATOR mode outline and toggle */
+    .game-wrap.terminator-on #gameCanvas { outline: 6px solid #ff1744; box-shadow: 0 0 0 12px rgba(255,23,68,0.15), 0 0 30px rgba(255,23,68,0.5) inset; animation: pulseBorder 1.8s ease-in-out infinite; }
+    @keyframes pulseBorder { 0%, 100% { outline-color: #ff1744; } 50% { outline-color: #ff5252; } }
+    .terminator-ctrl { display: inline-flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 999px; background: #fff3f5; border: 1px solid #ffd1d9; box-shadow: 0 6px 12px rgba(255,23,68,0.08); }
+    .terminator-ctrl[hidden] { display: none; }
+    .terminator-emoji { font-size: 18px; filter: drop-shadow(0 1px 0 #fff); }
+    .switch { position: relative; display: inline-block; width: 54px; height: 28px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ffccd5; transition: .2s; border-radius: 999px; border: 1px solid #ff9fb0; }
+    .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 2px; background-color: white; transition: .2s; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+    input:checked + .slider { background-color: #ff1744; border-color: #ff1744; }
+    input:checked + .slider:before { transform: translateX(26px); }
+    .terminator-label { font-weight: 800; color: #b00020; letter-spacing: 0.3px; }
   </style>
 {% endblock %}
 
 {% block content %}
 <header class="app-header full-bleed" role="banner">
   <nav class="toolbar panels" aria-label="Meme Dash controls">
+    <div id="terminatorCtrl" class="terminator-ctrl" role="group" aria-label="TERMINATOR bot control">
+      <span class="terminator-emoji" aria-hidden="true">🤖</span>
+      <span class="terminator-label">TERMINATOR</span>
+      <label class="switch" title="Toggle a bot opponent that hunts memes">
+        <input id="terminatorToggle" type="checkbox" aria-label="Enable TERMINATOR bot">
+        <span class="slider"></span>
+      </label>
+    </div>
     <details class="panel panel-sm" style="margin-left:auto;">
       <summary>Session</summary>
       <div class="group" role="group" aria-label="Collaboration status">
@@ -51,7 +72,7 @@
       <div id="scoreboard" class="scoreboard" title="Collect 5 of each meme to win!"></div>
     </div>
     <div class="top-right">
-      <div id="powerupPill" class="powerup hidden" title="While powered, colliding with another player blasts them back to respawn.">POWERED UP! <span id="powerupCountdown">10</span>s</div>
+      <div id="powerupPill" class="powerup hidden" title="While powered, colliding with another player blasts them back to respawn.">ALL POWERFUL BEING! <span id="powerupCountdown">10</span>s</div>
     </div>
     <div class="bottom-center">
       <small class="hint">WASD / Arrow keys to move, Space/Up to jump. First to 5 of every meme wins. Getting 5 of one meme gives a temporary power-up — bump into others to blast them back to respawn.</small>

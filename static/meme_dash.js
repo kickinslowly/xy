@@ -20,6 +20,9 @@
 
   const canvas = qs('#gameCanvas');
   const ctx = canvas.getContext('2d');
+  const gameWrap = qs('.game-wrap');
+  const terminatorToggle = qs('#terminatorToggle');
+  const terminatorCtrl = qs('#terminatorCtrl');
 
   const getParam = (name) => new URLSearchParams(window.location.search).get(name);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -31,6 +34,9 @@
   const mode = 'memedash';
   let socket = null;
   let room = null;
+  let presentCount = 1;
+  // TERMINATOR bot tracking
+  let botBrain = { lastX: 0, stuckTime: 0, upCooldown: 0 };
 
   // Images library (from template)
   let ALL_IMAGES = (window.AVAILABLE_MEME_IMAGES || []).filter(x => /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(x));
@@ -68,9 +74,15 @@
   const MAGNET_RANGE = Math.hypot(canvas.width, canvas.height) * 0.05 * 1.33; // +33% radius (~6.65% of screen diagonal)
   const MAGNET_PULL_SPEED = 520; // px/s pull speed toward player
 
+  // Double Jump power-up settings
+  const DOUBLEJUMP_SPAWN_MS = 30000; // spawn every 30s (like magnet)
+  const DOUBLEJUMP_DURATION_MS = 5000; // 5 seconds effect
+
   // State kept in rooms_state[room]['memedash']
   // We elect a host (ownerId = first creator). Host spawns memes, resolves collisions.
   let state = null; // { ownerId, players: {id: {...}}, memes: [...], lastSpawnAt }
+  // Timestamp (performance.now) of last remote authoritative state received; drives owner failover
+  let lastRemoteStateAt = 0;
 
   const my = {
     input: { left: false, right: false, up: false },
@@ -103,6 +115,10 @@
       powerType: null,
       powerEndsAt: 0,
       magnetEndsAt: 0,
+      // Double jump power-up state
+      doubleJumpEndsAt: 0,
+      usedSecondJump: false,
+      prevUp: false,
       flashUntil: 0,
     };
   }
@@ -115,9 +131,13 @@
       memes: [],
       lastSpawnAt: 0,
       // Magnet power-up state
-      powerups: [], // {id, kind:'magnet', x, y}
+      powerups: [], // {id, kind:'magnet'|'doublejump', x, y}
       lastPowerSpawnAt: 0,
+      lastDoubleSpawnAt: 0,
       seed: (Math.random() * 1e9) | 0,
+      // TERMINATOR bot support
+      terminatorMode: false,
+      botId: null,
     };
   }
 
@@ -132,6 +152,8 @@
     clientId = getStablePlayerId(pin);
 
     setupShareJoinUi();
+    setupTerminatorUi();
+    updateTerminatorUi();
 
     if (typeof io !== 'undefined') {
       socket = io();
@@ -240,6 +262,43 @@
     });
   }
 
+  // TERMINATOR UI logic
+  function setTerminatorOutline(on){ try { if (gameWrap) { gameWrap.classList.toggle('terminator-on', !!on); } if (terminatorToggle) terminatorToggle.checked = !!on; } catch(_){} }
+  function updateTerminatorUi(){
+    const active = !!(state && state.terminatorMode);
+    // Hide control if 2+ humans present and not active; keep visible during active mode
+    if (terminatorCtrl) {
+      const shouldHide = !active && (presentCount >= 2);
+      terminatorCtrl.hidden = !!shouldHide;
+    }
+    setTerminatorOutline(active);
+  }
+  function setupTerminatorUi(){
+    if (!terminatorToggle) return;
+    terminatorToggle.addEventListener('change', () => {
+      const want = !!terminatorToggle.checked;
+      if (!state) { if (want) { state = defaultState(); addMeIfMissing(); } }
+      const amOwner = state && state.ownerId === clientId;
+      if (!amOwner) {
+        // attempt to take ownership if stale
+        if (now() - lastRemoteStateAt <= 2000) { terminatorToggle.checked = !!(state && state.terminatorMode); return; }
+        if (state) state.ownerId = clientId;
+      }
+      if (want) {
+        // Enable mode
+        state.terminatorMode = true;
+        ensureBotPlayer();
+        broadcast();
+      } else {
+        // Disable mode
+        state.terminatorMode = false;
+        removeBotPlayer();
+        broadcast();
+      }
+      updateTerminatorUi();
+    });
+  }
+
   function setPresence(count, online) {
     if (!presenceEl) return;
     if (!online) { presenceEl.textContent = '• Offline'; return; }
@@ -255,13 +314,22 @@
       setTimeout(() => { if (!state) { state = defaultState(); addMeIfMissing(); broadcast(); } }, 250);
     });
     socket.on('disconnect', () => setPresence(0, false));
-    socket.on('presence', (p) => { if (p && p.room === room) setPresence(p.count, true); });
-    socket.on('state', (msg) => { if (msg && msg.room === room && msg.mode === mode) applyRemoteState(msg.state); });
-    socket.on('state_update', (msg) => { if (msg && msg.room === room && msg.mode === mode) applyRemoteState(msg.state); });
+    socket.on('presence', (p) => { if (p && p.room === room) { presentCount = Number(p.count) || 1; setPresence(p.count, true); updateTerminatorUi(); } });
+    socket.on('state', (msg) => { if (msg && msg.room === room && msg.mode === mode) { applyRemoteState(msg.state); lastRemoteStateAt = now(); } });
+    socket.on('state_update', (msg) => { if (msg && msg.room === room && msg.mode === mode) { applyRemoteState(msg.state); lastRemoteStateAt = now(); } });
     socket.on('input_update', (msg) => {
       if (msg && msg.room === room && msg.mode === mode && msg.clientId && msg.clientId !== clientId) {
         remoteInputs[msg.clientId] = sanitizeInput(msg.input);
       }
+    });
+
+    // Join denied (e.g., TERMINATOR mode active)
+    socket.on('join_denied', (msg) => {
+      try {
+        if (!msg || msg.room !== room) return;
+        alert('Unable to join: Terminator mode is active in this session. Create a new session or wait until it is disabled.');
+        // Optionally prompt to create a new session
+      } catch(_){ }
     });
 
     // Game result broadcast: show winner/loser overlays for all clients
@@ -337,6 +405,8 @@
     if (wasOwner && !amOwnerAfter) {
       // nothing specific for now
     }
+    // Sync UI elements to new state (outline/toggle)
+    updateTerminatorUi();
   }
 
   function broadcast(){
@@ -383,9 +453,16 @@
 
     // Owner runs simulation & spawning, then broadcasts
     if (state) {
+      // Owner failover: if remote owner appears inactive for >2s, promote self
+      if (state.ownerId !== clientId && (now() - lastRemoteStateAt) > 2000) {
+        state.ownerId = clientId;
+        addMeIfMissing();
+        lastRemoteStateAt = now();
+      }
       const amOwner = state.ownerId === clientId;
       if (amOwner) {
         spawnLoop(ts);
+        if (state.terminatorMode) { driveBotAI(dt); }
         simulate(dt);
         broadcast();
       } else {
@@ -428,6 +505,22 @@
         }
       }
     }
+
+    // Spawn a double-jump power-up roughly every 30 seconds, only one at a time
+    const hasDJ = (state.powerups || []).some(p => p.kind === 'doublejump');
+    if (!hasDJ && (ts - (state.lastDoubleSpawnAt || 0)) > DOUBLEJUMP_SPAWN_MS) {
+      let triesDj = 40;
+      while (triesDj-- > 0) {
+        const x = 40 + Math.random() * (W - 80);
+        const y = 60 + Math.random() * (H - 200);
+        if (isPositionWalkable(x, y)) {
+          state.powerups = state.powerups || [];
+          state.powerups.push({ id: `dj_${Date.now()}_${Math.random().toString(36).slice(2)}`, kind: 'doublejump', x, y });
+          state.lastDoubleSpawnAt = ts;
+          break;
+        }
+      }
+    }
   }
 
   function isPositionWalkable(x, y){
@@ -462,9 +555,17 @@
     // Keep gravity constant so higher jump velocity yields a higher apex.
     const jumpScale = clamp(1 + (1 - s), 1, 1.8); // at min speed (s=0.4) -> 1.6x; cap at 1.8x
     const gravity = GRAVITY;
+    const upEdge = !!inp.up && !p.prevUp;
+    const djActive = (p.doubleJumpEndsAt || 0) > Date.now();
+
     if (inp.up && p.grounded) {
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.grounded = false;
+      p.usedSecondJump = false; // allow a second jump later in this airtime
+    } else if (upEdge && !p.grounded && djActive && !p.usedSecondJump) {
+      // mid-air double jump
+      p.vy = -JUMP_VELOCITY * jumpScale;
+      p.usedSecondJump = true;
     }
     p.vy += gravity * dt;
 
@@ -499,6 +600,12 @@
     ny = clamp(ny, -400, FLOOR_Y - p.h);
 
     p.x = nx; p.y = ny;
+
+    // Reset double-jump availability when grounded
+    if (p.grounded) p.usedSecondJump = false;
+
+    // Track edge of Up for next frame
+    p.prevUp = !!inp.up;
   }
 
   function simulate(dt){
@@ -512,6 +619,456 @@
     resolveCollisionsAndPower(dt);
   }
 
+  // --- TERMINATOR bot helpers ---
+  function ensureBotPlayer(){
+    if (!state) return;
+    if (!state.botId) state.botId = `BOT_${Math.random().toString(36).slice(2,8)}`;
+    const id = state.botId;
+    if (!state.players[id]) {
+      const p = defaultPlayer(id);
+      p.name = 'TERMINATOR';
+      p.color = '#b00020';
+      state.players[id] = p;
+    }
+  }
+  function removeBotPlayer(){
+    if (!state || !state.botId) return;
+    try { delete remoteInputs[state.botId]; } catch(_){ }
+    try { delete state.players[state.botId]; } catch(_){ }
+  }
+  function driveBotAI(dt){
+    if (!state || !state.terminatorMode) return;
+    ensureBotPlayer();
+    const id = state.botId;
+    const bot = state.players[id];
+    if (!bot) return;
+
+    // --- Helpers for reachability and waypoints ---
+    const progress = getProgressFraction(bot);
+    const speedScale = clamp(1 - 0.6 * progress, 0.4, 1);
+    const jumpScale = clamp(1 + (1 - speedScale), 1, 1.8);
+    const vy0 = JUMP_VELOCITY * jumpScale;
+    const maxJump = (vy0 * vy0) / (2 * GRAVITY);
+    const tUp = vy0 / GRAVITY; // time to apex
+    const maxAirTime = tUp * 2; // symmetric approximately
+    const maxAirHoriz = BASE_SPEED * speedScale * maxAirTime * 0.9; // conservative
+
+    function findNearestMeme(){
+      let t = null; let bestD = Infinity;
+      for (const m of state.memes || []){
+        const dx = (m.x) - (bot.x + bot.w/2);
+        const dy = (m.y) - (bot.y + bot.h/2);
+        const d = Math.hypot(dx, dy);
+        if (d < bestD) { bestD = d; t = m; }
+      }
+      return t;
+    }
+
+    function targetReachableFromHere(m){
+      if (!m) return true;
+      const cx = bot.x + bot.w/2;
+      const dx = Math.abs(m.x - cx);
+      // positive if target is above bot center
+      const verticalGap = (bot.y + bot.h/2) - m.y;
+      // require both vertical and horizontal reach within a single jump
+      if (verticalGap <= maxJump + 8 && dx <= maxAirHoriz + 24) return true;
+      return false;
+    }
+
+    function pickWaypoint(target){
+      // Choose highest reachable platform toward target within one jump
+      let best = null; let bestScore = Infinity;
+      for (const p of platforms){
+        // platform must be above bot and within max jump height
+        if (p.y < bot.y - 6 && (bot.y - p.y) <= (maxJump + 10)){
+          const cx = p.x + p.w/2;
+          const tx = (target ? target.x : W/2);
+          const dx = Math.abs(tx - cx);
+          const heightGain = (bot.y - p.y); // bigger is better (higher platform)
+          const score = dx - heightGain * 0.35; // slightly favor higher platforms
+          if (score < bestScore){ bestScore = score; best = { x: clamp(cx, p.x + 18, p.x + p.w - 18), y: p.y }; }
+        }
+      }
+      return best;
+    }
+
+    function platformFor(y, x){
+      for (const p of platforms){
+        if (Math.abs(p.y - y) < 2 && x >= p.x && x <= p.x + p.w) return p;
+      }
+      return null;
+    }
+
+    function currentSupport(centerX){
+      if (bot.grounded){
+        const p = platformFor(bot.y + bot.h, centerX);
+        if (p) return p;
+        // floor as a synthetic platform
+        if (Math.abs((bot.y + bot.h) - FLOOR_Y) < 4) return { x: 0, y: FLOOR_Y, w: W, h: 0, floor: true };
+      }
+      return null;
+    }
+
+    function greedyPathToward(target, maxSteps){
+      const steps = Math.max(1, maxSteps|0);
+      const path = [];
+      const tx = target ? target.x : (W/2);
+      const ty = target ? target.y : 0;
+      let cur = currentSupport(bot.x + bot.w/2);
+      let curY = cur ? cur.y : (bot.grounded ? (bot.y + bot.h) : (bot.y + bot.h));
+      let curX = bot.x + bot.w/2;
+      for (let i=0; i<steps; i++){
+        // candidates above current within jump reach and roughly toward target
+        let best = null; let bestScore = Infinity;
+        for (const p of platforms){
+          if (p.y < curY - 6 && (curY - p.y) <= (maxJump + 10)){
+            const landX = clamp(tx, p.x + 18, p.x + p.w - 18);
+            const startX = cur ? clamp(curX, cur.x + 18, cur.x + cur.w - 18) : curX;
+            const horiz = Math.abs(landX - startX);
+            if (horiz <= maxAirHoriz + 24){
+              const towardX = Math.abs((p.x + p.w/2) - tx);
+              const heightGain = curY - p.y;
+              const score = towardX - heightGain * 0.4;
+              if (score < bestScore){
+                bestScore = score;
+                best = { x: landX, y: p.y };
+              }
+            }
+          }
+        }
+        if (!best) break;
+        path.push(best);
+        curX = best.x;
+        curY = best.y;
+        if (curY <= ty + 10) break; // reached near target height
+      }
+      return path;
+    }
+
+    function bfsPathToward(target, maxSteps){
+      const steps = Math.max(1, maxSteps|0);
+      const margin = 18;
+      // Build nodes: floor + platforms with safe landing zones
+      const nodes = [];
+      const floorNode = { idx: 0, x: 0, y: FLOOR_Y, w: W, h: 0, safeL: 0 + margin, safeR: W - margin, floor: true };
+      nodes.push(floorNode);
+      for (let i = 0; i < platforms.length; i++){
+        const p = platforms[i];
+        nodes.push({ idx: i + 1, x: p.x, y: p.y, w: p.w, h: p.h, safeL: p.x + margin, safeR: p.x + p.w - margin });
+      }
+      function canAscend(a, b){
+        // must go to a strictly higher platform (smaller y)
+        if (b.y >= a.y - 6) return false;
+        const vUp = a.y - b.y;
+        if (vUp > (maxJump + 10)) return false;
+        // horizontal feasibility: intervals within maxAirHoriz
+        const gap = (b.safeL > a.safeR) ? (b.safeL - a.safeR) : (a.safeL > b.safeR ? (a.safeL - b.safeR) : 0);
+        return gap <= (maxAirHoriz + 24);
+      }
+      const adj = nodes.map(() => []);
+      for (let i = 0; i < nodes.length; i++){
+        for (let j = 0; j < nodes.length; j++){
+          if (i === j) continue;
+          if (canAscend(nodes[i], nodes[j])) adj[i].push(j);
+        }
+      }
+      // Start from current support (or floor)
+      const cSup = currentSupport(bot.x + bot.w/2);
+      let startIdx = 0;
+      if (cSup && !cSup.floor){
+        const k = platforms.findIndex(p => p.x === cSup.x && p.y === cSup.y && p.w === cSup.w);
+        startIdx = (k >= 0) ? (k + 1) : 0;
+      }
+      // Goal: platform directly under target.x (just below target.y), else floor
+      let goalIdx = 0;
+      if (target){
+        let bestY = Infinity; let bestK = -1;
+        for (let i = 0; i < platforms.length; i++){
+          const p = platforms[i];
+          if (target.x >= p.x && target.x <= p.x + p.w && p.y > target.y && p.y < bestY){
+            bestY = p.y; bestK = i;
+          }
+        }
+        goalIdx = (bestK >= 0) ? (bestK + 1) : 0;
+      }
+      // BFS (limit by steps)
+      const q = [startIdx];
+      const prev = new Array(nodes.length).fill(-1);
+      const depth = new Array(nodes.length).fill(0);
+      const seen = new Array(nodes.length).fill(false);
+      seen[startIdx] = true;
+      let found = false;
+      while (q.length){
+        const u = q.shift();
+        if (u === goalIdx){ found = true; break; }
+        if (depth[u] >= steps) continue;
+        for (const v of adj[u]){
+          if (!seen[v]){ seen[v] = true; prev[v] = u; depth[v] = depth[u] + 1; q.push(v); }
+        }
+      }
+      let end = found ? goalIdx : startIdx;
+      if (!found){
+        // fallback: highest seen node still below target height
+        let best = startIdx;
+        for (let i = 0; i < nodes.length; i++){
+          if (seen[i] && (!target || (nodes[i].y > target.y)) && nodes[i].y < nodes[best].y) best = i;
+        }
+        end = best;
+      }
+      const seq = [];
+      while (end !== -1 && end !== startIdx){ seq.push(end); end = prev[end]; }
+      seq.reverse();
+      const result = [];
+      for (let i = 0; i < seq.length; i++){
+        const idx = seq[i];
+        const n = nodes[idx];
+        let refX;
+        if (i < seq.length - 1){
+          const nextN = nodes[seq[i+1]];
+          refX = nextN.x + nextN.w/2; // align under the next platform for an easier subsequent jump
+        } else {
+          refX = target ? target.x : (n.x + n.w/2);
+        }
+        const landX = clamp(refX, n.safeL, n.safeR);
+        result.push({ x: landX, y: n.y });
+      }
+      return result;
+    }
+
+    // Current target (with short lock to avoid oscillation) and potential waypoint/path
+    const nowT = now();
+    function nearestMemeWithDist(){
+      let m = null, d = Infinity;
+      for (const mm of (state.memes || [])){
+        const dx = (mm.x) - (bot.x + bot.w/2);
+        const dy = (mm.y) - (bot.y + bot.h/2);
+        const dd = Math.hypot(dx, dy);
+        if (dd < d){ d = dd; m = mm; }
+      }
+      return { m, d };
+    }
+    let target = null;
+    const near = nearestMemeWithDist();
+    if (botBrain.lockTargetId){
+      const locked = (state.memes || []).find(m => m.id === botBrain.lockTargetId) || null;
+      if (locked){
+        const dxL = (locked.x) - (bot.x + bot.w/2);
+        const dyL = (locked.y) - (bot.y + bot.h/2);
+        const dL = Math.hypot(dxL, dyL);
+        if (nowT <= (botBrain.lockUntil || 0)){
+          target = locked;
+        } else {
+          if (near.m && (dL === Infinity || near.d < dL * 0.7)){
+            target = near.m;
+            botBrain.lockTargetId = target.id;
+            botBrain.lockUntil = nowT + 1400;
+          } else {
+            target = locked;
+            botBrain.lockUntil = nowT + 600;
+          }
+        }
+      } else {
+        if (near.m){
+          target = near.m;
+          botBrain.lockTargetId = target.id;
+          botBrain.lockUntil = nowT + 1400;
+        }
+      }
+    } else {
+      if (near.m){
+        target = near.m;
+        botBrain.lockTargetId = target.id;
+        botBrain.lockUntil = nowT + 1400;
+      }
+    }
+    let goalX = null; let goalY = null;
+
+    // Anti-under-meme lock: if target is not reachable and we're nearly under it for too long, force sidestep
+    if (target){
+      const cx = bot.x + bot.w/2;
+      const dx = Math.abs(target.x - cx);
+      const verticalGap = (bot.y + bot.h/2) - target.y;
+      if (verticalGap > maxJump + 8 && dx < 60){
+        botBrain.underLock = (botBrain.underLock || 0) + dt;
+        if (botBrain.underLock > 0.6){
+          const dir = (Math.random() < 0.5) ? -1 : 1;
+          botBrain.goalX = clamp(cx + dir * 240, 20, W - 20);
+          botBrain.goalY = null;
+          botBrain.goalUntil = nowT + 1100;
+          botBrain.noJumpUntil = nowT + 750; // walk sideways before considering jumps to avoid bounce loops
+          botBrain.underLock = 0;
+        }
+      } else {
+        botBrain.underLock = Math.max(0, (botBrain.underLock || 0) - dt*0.5);
+      }
+    }
+
+    // Descend when target is below: walk to the nearest edge toward the target and drop
+    if (target && (target.y > (bot.y + bot.h/2) + 8)){
+      const s = currentSupport(bot.x + bot.w/2);
+      if (s && Math.abs((bot.y + bot.h) - s.y) < 2){
+        const toRight = target.x >= (s.x + s.w/2);
+        const dropX = toRight ? (s.x + s.w + 6) : (s.x - 6);
+        botBrain.goalX = clamp(dropX, 4, W - 4);
+        botBrain.goalY = null;
+        botBrain.goalUntil = nowT + 1600;
+        botBrain.noJumpUntil = Math.max((botBrain.noJumpUntil || 0), nowT + 600);
+        goalX = botBrain.goalX; goalY = botBrain.goalY;
+      }
+    }
+
+    if (target && !targetReachableFromHere(target)){
+      // Maintain a short multi-step ascent path toward the target
+      if (!botBrain.path || !botBrain.path.length || (botBrain.pathUntil || 0) < nowT){
+        const path = bfsPathToward(target, 5);
+        if (path && path.length){
+          botBrain.path = path.slice(0, 3);
+          botBrain.pathUntil = nowT + 4000;
+          // lock on target while following path
+          botBrain.lockTargetId = target.id;
+          botBrain.lockUntil = nowT + 1400;
+        } else {
+          botBrain.path = null;
+        }
+      }
+      if (botBrain.path && botBrain.path.length){
+        const next = botBrain.path[0];
+        botBrain.goalX = next.x;
+        botBrain.goalY = next.y;
+        botBrain.goalUntil = nowT + 2800;
+        // Compute takeoff edge on current support toward destination platform
+        const cX = bot.x + bot.w/2;
+        const src = currentSupport(cX);
+        const dest = platformFor(botBrain.goalY, botBrain.goalX);
+        if (src && dest){
+          const toRight = ((dest.x + dest.w/2) > (src.x + src.w/2));
+          const m = 18;
+          const sL = src.x + m, sR = src.x + src.w - m;
+          const landX = botBrain.goalX;
+          botBrain.takeoffX = clamp(landX, sL, sR);
+          botBrain.jumpDir = toRight ? 1 : -1;
+          botBrain.srcY = src.y;
+        } else {
+          botBrain.takeoffX = null; botBrain.srcY = null; botBrain.jumpDir = 0;
+        }
+        goalX = botBrain.goalX; goalY = botBrain.goalY;
+      } else {
+        // Fallback: single-hop waypoint or sidestep to get unstuck
+        if (!botBrain.goalX || (botBrain.goalUntil || 0) < nowT || Math.random() < 0.03){
+          const wp = pickWaypoint(target);
+          if (wp){
+            botBrain.goalX = wp.x;
+            botBrain.goalY = wp.y;
+            botBrain.goalUntil = nowT + 2600;
+          } else {
+            const dir = (target.x > (bot.x + bot.w/2)) ? 1 : -1;
+            botBrain.goalX = clamp(bot.x + dir * 200, 20, W - 20);
+            botBrain.goalY = null;
+            botBrain.goalUntil = nowT + 1200;
+          }
+        }
+        if (botBrain.goalX){ goalX = botBrain.goalX; goalY = botBrain.goalY; }
+      }
+    } else {
+      // Clear any stale waypoint/path when a direct jump is viable
+      botBrain.path = null;
+      botBrain.goalX = null; botBrain.goalY = null; botBrain.goalUntil = 0;
+      botBrain.takeoffX = null; botBrain.srcY = null; botBrain.jumpDir = 0;
+    }
+
+    // Adopt goal if present, else head to the target (or center fallback)
+    let desiredX = (goalX != null) ? goalX : (target ? target.x : (W/2));
+    const input = { left: false, right: false, up: false };
+
+    // Lateral steering toward desired X
+    const centerX = bot.x + bot.w/2;
+    if (botBrain.takeoffX != null && bot.grounded && botBrain.srcY != null && Math.abs((bot.y + bot.h) - botBrain.srcY) < 2){ desiredX = botBrain.takeoffX; }
+    if (Math.abs(desiredX - centerX) > 6) {
+      if (desiredX > centerX) input.right = true; else input.left = true;
+    } else {
+      // Close enough to goal horizontally: expire waypoint to re-evaluate next tick
+      if (goalX != null) { botBrain.goalUntil = 0; }
+    }
+
+    // Jump heuristics: prefer ledge-aligned jumps for waypoints, or arc-feasible jumps for direct targets
+    const targetAbove = target ? (target.y + 6) < (bot.y + bot.h/2) : false;
+    const waypointAbove = (goalY != null) ? (goalY + 2) < (bot.y + bot.h/2) : false;
+
+    // Stuck detection
+    const movedX = Math.abs(bot.x - (botBrain.lastX || 0));
+    if ((movedX < 2 && (input.left || input.right) && bot.grounded)) {
+      botBrain.stuckTime = (botBrain.stuckTime || 0) + dt;
+    } else {
+      botBrain.stuckTime = Math.max(0, (botBrain.stuckTime || 0) - dt*0.5);
+    }
+    botBrain.lastX = bot.x;
+
+    // Ledge alignment check for waypoint
+    let okToJump = false;
+    if (bot.grounded){
+      if (waypointAbove && goalY != null){
+        const dest = platformFor(goalY, goalX != null ? goalX : centerX);
+        const src = currentSupport(centerX);
+        if (dest && src){
+          const margin = 18;
+          const left = dest.x + margin;
+          const right = dest.x + dest.w - margin;
+          const atTakeoff = (botBrain.takeoffX != null) ? Math.abs(centerX - botBrain.takeoffX) <= 10 : true;
+          if (atTakeoff) okToJump = true; // jump when at computed takeoff point; dest alignment not required
+        }
+      }
+      if (!okToJump && targetAbove && targetReachableFromHere(target)){
+        // Only jump directly for targets when arc-feasible horizontally
+        const dx = Math.abs((target ? target.x : centerX) - centerX);
+        if (dx <= maxAirHoriz * 0.8) okToJump = true;
+      }
+      // Last resort if stuck while grounded, but avoid bounce when target is too high or we're aligning to a waypoint
+      const tooHighNow = target && ((bot.y + bot.h/2) - target.y) > (maxJump + 8);
+      const aligning = waypointAbove && (goalY != null);
+      if (!okToJump && (botBrain.stuckTime || 0) > 0.5 && !tooHighNow && !aligning) okToJump = true;
+    }
+
+    botBrain.upCooldown = Math.max(0, (botBrain.upCooldown || 0) - dt);
+    if (bot.grounded && okToJump && botBrain.upCooldown <= 0 && nowT >= (botBrain.noJumpUntil || 0)) {
+      input.up = true;
+      botBrain.stuckTime = 0;
+      botBrain.upCooldown = 0.28; // avoid bunny hopping
+    }
+    
+    // Advance along multi-step path upon landing on the target platform
+    if (botBrain.path && botBrain.path.length){
+      const gy = botBrain.goalY;
+      if (gy != null && bot.grounded && Math.abs((bot.y + bot.h) - gy) < 2){
+        botBrain.path.shift();
+        if (botBrain.path.length){
+          const nxt = botBrain.path[0];
+          botBrain.goalX = nxt.x; botBrain.goalY = nxt.y;
+          botBrain.goalUntil = nowT + 2800;
+          // Recompute takeoff for next edge
+          const cX2 = bot.x + bot.w/2;
+          const src2 = currentSupport(cX2);
+          const dest2 = platformFor(botBrain.goalY, botBrain.goalX);
+          if (src2 && dest2){
+            const toRight2 = ((dest2.x + dest2.w/2) > (src2.x + src2.w/2));
+            const m2 = 18;
+            const sL2 = src2.x + m2, sR2 = src2.x + src2.w - m2;
+            const landX2 = botBrain.goalX;
+            botBrain.takeoffX = clamp(landX2, sL2, sR2);
+            botBrain.jumpDir = toRight2 ? 1 : -1;
+            botBrain.srcY = src2.y;
+          } else {
+            botBrain.takeoffX = null; botBrain.srcY = null; botBrain.jumpDir = 0;
+          }
+        } else {
+          botBrain.goalX = null; botBrain.goalY = null;
+          botBrain.takeoffX = null; botBrain.srcY = null; botBrain.jumpDir = 0;
+        }
+      }
+    }
+    
+    remoteInputs[id] = input;
+  }
+
   function simulateLocal(dt){
     // Only move my local representation (others will update from network)
     if (!state.players[clientId]) return;
@@ -521,12 +1078,12 @@
   function resolveCollisionsAndPower(dt){
     const nowMs = Date.now();
 
-    // 1) Power-up pickups (magnet)
+    // 1) Power-up pickups (magnet, doublejump)
     const powerups = state.powerups || [];
     const remainingUps = [];
     for (const up of powerups) {
       let picked = null;
-      if (up.kind === 'magnet') {
+      if (up.kind === 'magnet' || up.kind === 'doublejump') {
         for (const id of Object.keys(state.players)) {
           const p = state.players[id];
           if (rectOverlap(p.x, p.y, p.w, p.h, up.x - 16, up.y - 16, 32, 32)) {
@@ -535,8 +1092,14 @@
         }
       }
       if (picked) {
-        picked.magnetEndsAt = nowMs + MAGNET_DURATION_MS;
-        showMagnetFx(picked.magnetEndsAt);
+        if (up.kind === 'magnet') {
+          picked.magnetEndsAt = nowMs + MAGNET_DURATION_MS;
+          showMagnetFx(picked.magnetEndsAt);
+        } else if (up.kind === 'doublejump') {
+          picked.doubleJumpEndsAt = nowMs + DOUBLEJUMP_DURATION_MS;
+          picked.usedSecondJump = false;
+          showDoubleJumpFx(picked.doubleJumpEndsAt);
+        }
       } else {
         remainingUps.push(up);
       }
@@ -702,6 +1265,7 @@
     const ups = state.powerups || [];
     for (const up of ups) {
       if (up.kind === 'magnet') drawMagnetPickup(up.x, up.y);
+      if (up.kind === 'doublejump') drawDoubleJumpPickup(up.x, up.y);
     }
 
     // Memes
@@ -789,7 +1353,8 @@
       const nowT = Date.now();
       let endsAt = 0; let label = '';
       if ((me.magnetEndsAt || 0) > nowT) { endsAt = me.magnetEndsAt; label = 'MAGNET'; }
-      else if ((me.powerEndsAt || 0) > nowT) { endsAt = me.powerEndsAt; label = 'POWERED UP'; }
+      else if ((me.doubleJumpEndsAt || 0) > nowT) { endsAt = me.doubleJumpEndsAt; label = 'DOUBLE JUMP'; }
+      else if ((me.powerEndsAt || 0) > nowT) { endsAt = me.powerEndsAt; label = 'ALL POWERFUL BEING'; }
       if (endsAt > nowT) {
         powerupPill?.classList.remove('hidden');
         const secsLeft = Math.max(0, Math.ceil((endsAt - nowT)/1000));
@@ -881,6 +1446,32 @@
     ctx.restore();
   }
 
+  // Visual: draw double jump pickup on field
+  function drawDoubleJumpPickup(x, y){
+    const t = (Date.now() % 1200) / 1200;
+    const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.08;
+    const r = 16 * pulse;
+    // aura
+    ctx.save();
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = '#2196f3';
+    ctx.beginPath(); ctx.arc(x, y, r + 10, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // coin base
+    ctx.save();
+    ctx.fillStyle = '#e3f2fd';
+    ctx.strokeStyle = '#2196f3';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // glyph: "2x"
+    ctx.fillStyle = '#0d47a1';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('2x', x, y);
+    ctx.restore();
+  }
+
   function drawMagnetAura(p){
     const cx = p.x + p.w/2;
     const cy = p.y + p.h/2;
@@ -910,6 +1501,28 @@
         const update = () => {
           const left = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
           powerupPill.innerHTML = `MAGNET! <span id="powerupCountdown">${left}</span>s`;
+          if (left <= 0) { clearInterval(iv); powerupPill.classList.add('hidden'); }
+        };
+        update();
+        iv = setInterval(update, 250);
+      }
+    } catch(_){ }
+  }
+
+  function showDoubleJumpFx(endsAt){
+    try {
+      if (bigFlash) {
+        const h1 = bigFlash.querySelector('h1');
+        if (h1) h1.textContent = 'DOUBLE JUMP!';
+        bigFlash.classList.add('show');
+        setTimeout(() => bigFlash.classList.remove('show'), 900);
+      }
+      if (powerupPill) {
+        powerupPill.classList.remove('hidden');
+        let iv;
+        const update = () => {
+          const left = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
+          powerupPill.innerHTML = `DOUBLE JUMP! <span id="powerupCountdown">${left}</span>s`;
           if (left <= 0) { clearInterval(iv); powerupPill.classList.add('hidden'); }
         };
         update();

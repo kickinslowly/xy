@@ -347,7 +347,7 @@
             game_name: labelForMode(prevMode),
             outcome: 'success',
             room_pin: room,
-            details_json: { challenge: ch }
+            details_json: { challenge_type: 'ratio', ratio_mode: prevMode, correct: true, challenge: ch }
           };
           // Fire-and-forget; backend counts successes for achievements
           window.recordResult(payload).catch(() => {});
@@ -361,6 +361,18 @@
     } else {
       // Full-screen fail splash, but brief
       flash(splashFail, 1000);
+      // Record incorrect attempt for analytics
+      try {
+        if (window.recordResult) {
+          window.recordResult({
+            mode: 'ratios',
+            game_name: labelForMode(sharedState.mode || 'create'),
+            outcome: 'incorrect',
+            room_pin: room,
+            details_json: { challenge_type: 'ratio', ratio_mode: (sharedState.mode || 'create'), correct: false }
+          }).catch(() => {});
+        }
+      } catch (e) { /* ignore */ }
     }
   }
 

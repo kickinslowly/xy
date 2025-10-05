@@ -551,9 +551,25 @@
       winnerOverlay.classList.toggle('show', !!weWon);
       loserOverlay.classList.toggle('show', !!(!weWon && myTeam));
       if (state.winner) winnerText.textContent = `Team ${state.winner} Wins!`;
+      // Record result once per gameover
+      try {
+        if (!updateUiFromState._postedResult) {
+          const outcome = weWon ? 'win' : (myTeam ? 'lose' : null);
+          if (outcome && window.recordResult) {
+            window.recordResult({
+              mode: 'memewars',
+              game_name: 'Meme Wars',
+              outcome,
+              details_json: { challenge_type: 'memewars', team: myTeam }
+            }).catch(() => {});
+          }
+          updateUiFromState._postedResult = true;
+        }
+      } catch(_) { }
     } else {
       winnerOverlay.classList.remove('show');
       loserOverlay.classList.remove('show');
+      updateUiFromState._postedResult = false;
     }
 
     // Render boards and stats

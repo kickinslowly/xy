@@ -11,6 +11,7 @@ import jwt, datetime
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
+import time
 
 # Load environment variables from a .env file, if present
 load_dotenv()
@@ -20,8 +21,17 @@ app = Flask(__name__)
 
 # Database configuration (privacy-first, no PII by default)
 # Use DATABASE_URL for Postgres in production (e.g., postgres://...), else fallback to local SQLite
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///app.db'
+# Normalize DATABASE_URL for SQLAlchemy/psycopg2 and set stable local SQLite fallback
+raw_db_url = os.environ.get('DATABASE_URL')
+if raw_db_url and raw_db_url.startswith('postgres://'):
+    # SQLAlchemy prefers postgresql+psycopg2
+    raw_db_url = raw_db_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+
+os.makedirs(app.instance_path, exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url or f"sqlite:///{os.path.join(app.instance_path, 'app.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Nice-to-have for managed DBs (avoids stale connections)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = { 'pool_pre_ping': True }
 # Secrets and OAuth config
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-insecure')
 app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID')
@@ -203,13 +213,29 @@ class AccessLog(db.Model):
 
 
 # ========= Added for results and achievements =========
+# Standardized Result Schema (details_json and fields)
+# - mode: short snake-case key for the mode. Use 'plane' for coordinate plane tasks, including line and vertex challenges.
+# - game_name: human label for the specific task, e.g., 'Vertex Challenge', 'Line Challenge', 'Create This Ratio'.
+# - outcome: one of 'success'/'completed'/'win' (treated as correct), or 'lose'/'fail'/'incorrect' (treated as incorrect). May be null for neutral.
+# - score: optional numeric score.
+# - duration_ms: optional duration in ms.
+# - room_pin: optional PIN for room-based sessions.
+# - activity_id: optional activity id.
+# - details_json: JSON payload with the following naming structure:
+#     challenge_type: string categorizing the task, e.g., 'vertex','line','ratio','memedash','battleship','memewars'.
+#     correct: boolean where true = correct/success, false = incorrect; omitted if not applicable.
+#     correct_count, incorrect_count, total_attempts: integers when available.
+#     extra fields specific to the challenge for analytics (e.g., x,y for vertex; m,b for line).
+# Storage:
+#   Stored in game_results table per completion/attempt. Use SUCCESS_OUTCOMES to interpret correctness.
+#   Realtime events can also be captured in events table via /events.
 class GameResult(db.Model):
     __tablename__ = 'game_results'
     id = db.Column(BigInt, primary_key=True, autoincrement=True)
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    mode = db.Column(db.Text, nullable=False)  # e.g., 'plane','line','battleship','memewars','ratios'
+    mode = db.Column(db.Text, nullable=False)  # e.g., 'plane','battleship','memewars','ratios','memedash'
     game_name = db.Column(db.Text, nullable=False)  # specific game/activity name within a mode
-    outcome = db.Column(db.Text)  # e.g., 'win','lose','draw','completed','success'
+    outcome = db.Column(db.Text)  # e.g., 'win','lose','draw','completed','success','incorrect','fail'
     score = db.Column(db.Numeric(10, 2))
     duration_ms = db.Column(db.BigInteger)
     room_pin = db.Column(db.Text)
@@ -264,6 +290,8 @@ except Exception:
 # In-memory state storage per room and mode.
 # rooms_state[room]['plane'] or ['line'] -> last known state (dict)
 rooms_state = defaultdict(lambda: {'plane': None, 'line': None, 'battleship': None, 'memewars': None, 'ratios': None, 'memedash': None})
+# Track last authoritative update timestamp per room/mode for owner failover (epoch seconds)
+last_state_ts = defaultdict(lambda: {'plane': 0.0, 'line': 0.0, 'battleship': 0.0, 'memewars': 0.0, 'ratios': 0.0, 'memedash': 0.0})
 # Track connections per room for presence
 room_members = defaultdict(set)  # room -> set of sids
 # Battleship role assignment per room: first joiner = 'A', second = 'B', others spectate
@@ -405,6 +433,12 @@ def google_auth():
             else:
                 raise
 
+    # Session-only display name for personalization (privacy-first; not stored in DB)
+    try:
+        given_name = (idinfo.get('given_name') if 'idinfo' in locals() else None) or None
+    except Exception:
+        given_name = None
+
     payload = {
         'uid': int(user.id),
         'role': user.role,
@@ -412,7 +446,13 @@ def google_auth():
     }
     token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
-    return jsonify({'token': token, 'user': {'id': int(user.id), 'role': user.role}})
+    user_obj = {'id': int(user.id), 'role': user.role}
+    if given_name:
+        user_obj['display_name'] = given_name
+    else:
+        user_obj['display_name'] = f"Player {int(user.id)}"
+
+    return jsonify({'token': token, 'user': user_obj})
 
 
 @app.post('/events')
@@ -438,13 +478,58 @@ def ingest_event():
 # ------- Results ingestion and dashboard API -------
 SUCCESS_OUTCOMES = {'win', 'completed', 'success'}
 
+# Canonicalize mode names to ensure consistent storage and counting
+# Accept common synonyms and legacy variations and map them to canonical keys used across the app.
+MODE_SYNONYMS = {
+    'plane': {'plane', 'coordinate_plane', 'coordinate plane', 'graph', 'cartesian'},
+    'line': {'line', 'line_graph', 'line graph'},
+    'battleship': {'battleship', 'battle_ship', 'battle-ship'},
+    'memewars': {'memewars', 'meme_wars', 'meme-wars', 'meme wars'},
+    'memedash': {'memedash', 'meme_dash', 'meme-dash', 'meme dash'},
+    'ratios': {'ratios', 'ratio'},
+}
+
+
+def canonicalize_mode(value: str) -> str:
+    v = (value or '').strip().lower()
+    if not v:
+        return 'unknown'
+    for canon, names in MODE_SYNONYMS.items():
+        if v in names:
+            return canon
+    return v
+
+
+def canonical_mode_group(target_mode: str):
+    """Return list of mode keys that should be counted toward the given canonical mode bucket.
+    Plane bucket includes legacy 'line'. Others include common synonyms to count historical data.
+    """
+    m = canonicalize_mode(target_mode)
+    if m == 'plane':
+        return ['plane', 'line']
+    # include all known synonyms for robust counting
+    names = set(MODE_SYNONYMS.get(m, {m}))
+    # Always include the canonical itself
+    names.add(m)
+    return sorted(names)
+
 
 def ensure_achievements_seed():
     modes = ['plane', 'line', 'battleship', 'memewars', 'ratios', 'memedash']
-    tiers = [10, 50, 200]  # "substantial" thresholds
+    tiers = [10, 50, 200]  # meaningful thresholds
+
+    # Friendly labels per mode for consistent naming/spelling on dashboard
+    mode_labels = {
+        'plane': 'Coordinate Plane',
+        'line': 'Line Graph',
+        'battleship': 'Battleship',
+        'memewars': 'Meme Wars',
+        'ratios': 'Ratios',
+        'memedash': 'Meme Dash',
+    }
 
     # Collect existing achievement codes first to avoid autoflush side effects
-    existing = {a.code for a in Achievement.query.all()}
+    existing_codes = {a.code for a in Achievement.query.all()}
 
     # Determine the next id manually because on SQLite a BIGINT PK won't autoincrement
     # unless the column is exactly INTEGER PRIMARY KEY. Our initial table may not meet that,
@@ -455,9 +540,10 @@ def ensure_achievements_seed():
     for m in modes:
         for t in tiers:
             code = f"{m}_t{t}"
-            if code not in existing:
-                title = f"{m.title()} {t}"
-                desc = f"Complete {t} {m} tasks"
+            if code not in existing_codes:
+                label = mode_labels.get(m, m.title())
+                title = f"{label} {t}"
+                desc = f"Complete {t} {label} challenges"
                 ach = Achievement(id=next_id, code=code, title=title, description=desc, mode=m, threshold=t)
                 next_id += 1
                 to_create.append(ach)
@@ -466,13 +552,30 @@ def ensure_achievements_seed():
         db.session.add_all(to_create)
         db.session.commit()
 
+    # Ensure existing rows have correct human-friendly titles/descriptions
+    updated = False
+    for a in Achievement.query.all():
+        label = mode_labels.get(a.mode, (a.mode or '').title())
+        try:
+            th = int(a.threshold)
+        except Exception:
+            th = a.threshold
+        expected_title = f"{label} {th}"
+        expected_desc = f"Complete {th} {label} challenges"
+        if a.title != expected_title or (a.description or '') != expected_desc:
+            a.title = expected_title
+            a.description = expected_desc
+            updated = True
+    if updated:
+        db.session.commit()
+
 
 @app.post('/api/results')
 @require_auth
 def record_result():
     ensure_achievements_seed()
     body = request.get_json(silent=True) or {}
-    mode = (body.get('mode') or '').strip().lower() or 'unknown'
+    mode = canonicalize_mode(body.get('mode'))
     game_name = (body.get('game_name') or mode).strip() or mode
     outcome = (body.get('outcome') or '').strip().lower() or None
     score = body.get('score')
@@ -538,42 +641,135 @@ def api_dashboard():
         for gr in GameResult.query.filter_by(user_id=uid).order_by(GameResult.played_at.desc()).limit(25).all()
     ]
 
-    # Per-mode aggregates
-    modes = ['plane', 'line', 'battleship', 'memewars', 'ratios', 'memedash']
-    per_mode = {}
-    for m in modes:
-        total = db.session.query(func.count(GameResult.id)).filter(
-            GameResult.user_id == uid, GameResult.mode == m
-        ).scalar() or 0
-        wins = db.session.query(func.count(GameResult.id)).filter(
-            GameResult.user_id == uid, GameResult.mode == m, GameResult.outcome.in_(list(SUCCESS_OUTCOMES))
-        ).scalar() or 0
-        avg_score = db.session.query(func.avg(GameResult.score)).filter(
-            GameResult.user_id == uid, GameResult.mode == m, GameResult.score != None
-        ).scalar()
-        best_score = db.session.query(func.max(GameResult.score)).filter(
-            GameResult.user_id == uid, GameResult.mode == m, GameResult.score != None
-        ).scalar()
-        per_mode[m] = {
-            'total_games': int(total),
-            'wins_or_completed': int(wins),
-            'avg_score': float(avg_score) if avg_score is not None else None,
-            'best_score': float(best_score) if best_score is not None else None,
-        }
+    # Per-mode aggregates (totals, wins, scores) using SQL, then enrich with accuracy and challenge breakdown in Python
+    modes = ['plane', 'battleship', 'memewars', 'ratios', 'memedash']
+    per_mode = {m: {
+        'total_games': int(db.session.query(func.count(GameResult.id)).filter(
+            GameResult.user_id == uid,
+            GameResult.mode.in_(canonical_mode_group(m))
+        ).scalar() or 0),
+        'wins_or_completed': int(db.session.query(func.count(GameResult.id)).filter(
+            GameResult.user_id == uid,
+            GameResult.mode.in_(canonical_mode_group(m)),
+            GameResult.outcome.in_(list(SUCCESS_OUTCOMES))
+        ).scalar() or 0),
+        'avg_score': (lambda v: float(v) if v is not None else None)(db.session.query(func.avg(GameResult.score)).filter(
+            GameResult.user_id == uid,
+            GameResult.mode.in_(canonical_mode_group(m)),
+            GameResult.score != None
+        ).scalar()),
+        'best_score': (lambda v: float(v) if v is not None else None)(db.session.query(func.max(GameResult.score)).filter(
+            GameResult.user_id == uid,
+            GameResult.mode.in_(canonical_mode_group(m)),
+            GameResult.score != None
+        ).scalar()),
+    } for m in modes}
 
-    # Achievements
+    # Accuracy and challenge-type breakdown
+    rows = GameResult.query.filter_by(user_id=uid).all()
+    # helpers
+    def classify(gr):
+        det = gr.details_json or {}
+        # canonical mode: map synonyms, then merge 'line' into 'plane' bucket
+        base_mode = canonicalize_mode(gr.mode or '')
+        cmode = 'plane' if base_mode in ('line', 'plane') else (base_mode or 'unknown')
+        # challenge type
+        ctype = det.get('challenge_type')
+        if not ctype:
+            # infer from mode/game_name
+            if gr.mode == 'line' or (cmode == 'plane' and 'line' in (gr.game_name or '').lower()):
+                ctype = 'line'
+            elif cmode == 'plane' and 'vertex' in (gr.game_name or '').lower():
+                ctype = 'vertex'
+            elif cmode == 'ratios':
+                ctype = 'ratio'
+            else:
+                ctype = cmode
+        # correctness
+        if det.get('correct') is True:
+            corr = True
+        elif det.get('correct') is False:
+            corr = False
+        else:
+            if gr.outcome in SUCCESS_OUTCOMES:
+                corr = True
+            elif (gr.outcome or '').lower() in {'incorrect','fail','wrong','lose','lost'}:
+                corr = False
+            else:
+                corr = None
+        return cmode, ctype, corr
+
+    # aggregate
+    by_mode = {m: {'correct': 0, 'incorrect': 0, 'by_challenge': {}} for m in modes}
+    for gr in rows:
+        cmode, ctype, corr = classify(gr)
+        if cmode not in by_mode:
+            by_mode[cmode] = {'correct': 0, 'incorrect': 0, 'by_challenge': {}}
+        bm = by_mode[cmode]
+        bc = bm['by_challenge'].setdefault(ctype, {'correct': 0, 'incorrect': 0})
+        if corr is True:
+            bm['correct'] += 1
+            bc['correct'] += 1
+        elif corr is False:
+            bm['incorrect'] += 1
+            bc['incorrect'] += 1
+
+    # finalize accuracy
+    for m, stats in by_mode.items():
+        tot = stats['correct'] + stats['incorrect']
+        stats['accuracy'] = (stats['correct'] / tot) if tot > 0 else None
+        # carry into per_mode
+        if m in per_mode:
+            per_mode[m]['correct'] = int(stats['correct'])
+            per_mode[m]['incorrect'] = int(stats['incorrect'])
+            per_mode[m]['accuracy'] = float(stats['accuracy']) if stats['accuracy'] is not None else None
+            # challenge breakdown with accuracy
+            per_mode[m]['by_challenge'] = {}
+            for ct, s in stats['by_challenge'].items():
+                t = s['correct'] + s['incorrect']
+                acc = (s['correct']/t) if t>0 else None
+                per_mode[m]['by_challenge'][ct] = {
+                    'correct': int(s['correct']),
+                    'incorrect': int(s['incorrect']),
+                    'accuracy': float(acc) if acc is not None else None,
+                    'total': int(t),
+                }
+
+    # Achievements with progress info
     all_achs = Achievement.query.order_by(Achievement.mode, Achievement.threshold).all()
     unlocked = {ua.achievement_id: ua.unlocked_at for ua in UserAchievement.query.filter_by(user_id=uid).all()}
+
+    # Pre-compute per-mode completed counts toward achievements
+    relevant_modes = sorted({a.mode for a in all_achs})
+    progress_counts = {}
+    for m in relevant_modes:
+        modes_list = canonical_mode_group(m)
+        cnt = db.session.query(func.count(GameResult.id)).filter(
+            GameResult.user_id == uid,
+            GameResult.mode.in_(modes_list),
+            (GameResult.outcome == None) | (GameResult.outcome.in_(list(SUCCESS_OUTCOMES)))
+        ).scalar()
+        progress_counts[m] = int(cnt or 0)
+
     achievements = []
     for a in all_achs:
         unlocked_at = unlocked.get(a.id)
+        current = progress_counts.get(a.mode, 0)
+        thr = int(a.threshold)
+        percent = (current / thr) if thr > 0 else 0.0
+        if percent > 1:
+            percent = 1.0
         achievements.append({
             'code': a.code,
             'title': a.title,
             'description': a.description,
             'mode': a.mode,
-            'threshold': int(a.threshold),
-            'unlocked': unlocked_at is not None,
+            'threshold': thr,
+            'current': int(current),
+            'remaining': max(0, thr - int(current)),
+            'percent': float(percent),
+            'progress_text': f"{min(int(current), thr)}/{thr}",
+            'unlocked': unlocked_at is not None or (current >= thr),
             'unlocked_at': unlocked_at.isoformat() if unlocked_at else None
         })
 
@@ -607,11 +803,23 @@ def handle_connect(auth):
 def handle_join(data):
     room = (data or {}).get('room') or request.args.get('room') or request.path or '/'
     mode = (data or {}).get('mode') or 'plane'
+    mode_l = (mode or '').lower()
+
+    # Block joining Meme Dash if TERMINATOR mode is active in this room
+    if mode_l in ('memedash', 'meme-dash', 'meme_dash'):
+        cur = rooms_state[room].get('memedash')
+        try:
+            if isinstance(cur, dict) and cur.get('terminatorMode'):
+                emit('join_denied', {'room': room, 'mode': 'memedash', 'reason': 'terminator_active'}, room=request.sid)
+                return
+        except Exception:
+            pass
+
     join_room(room)
     room_members[room].add(request.sid)
 
     # Team role assignment (Battleship and Meme Wars): first joiner = 'A', second = 'B', others spectate
-    if (mode or '').lower() in ('battleship', 'memewars', 'meme-wars'):
+    if mode_l in ('battleship', 'memewars', 'meme-wars'):
         role = None
         roles = battleship_roles[room]
         if roles.get('A') is None:
@@ -626,9 +834,9 @@ def handle_join(data):
     # Send current presence to room
     emit('presence', {'room': room, 'count': len(room_members[room])}, room=room)
     # Optionally send the current state to the new client
-    state = rooms_state[room].get(mode)
-    if state is not None:
-        emit('state', {'room': room, 'mode': mode, 'state': state})
+    st = rooms_state[room].get(mode)
+    if st is not None:
+        emit('state', {'room': room, 'mode': mode, 'state': st})
 
 
 @socketio.on('leave')
@@ -681,12 +889,64 @@ def handle_state_update(data):
     room = (data or {}).get('room') or request.args.get('room') or request.path or '/'
     mode = (data or {}).get('mode') or 'plane'
     client_id = (data or {}).get('clientId')
-    state = (data or {}).get('state')
-    if state is None:
+    incoming = (data or {}).get('state') or {}
+    if incoming is None:
         return
-    # Store and broadcast to room except sender
-    rooms_state[room][mode] = state
-    emit('state_update', {'room': room, 'mode': mode, 'clientId': client_id, 'state': state}, room=room, include_self=False)
+
+    # Fetch current known state for this room/mode
+    current = rooms_state[room].get(mode)
+
+    try:
+        # Normalize players dicts
+        inc_players = (incoming or {}).get('players') or {}
+        cur_players = (current or {}).get('players') or {}
+
+        if current is None:
+            # First writer becomes the owner; accept as-is
+            rooms_state[room][mode] = incoming
+            last_state_ts[room][mode] = time.time()
+            out_state = incoming
+        else:
+            cur_owner = (current or {}).get('ownerId')
+            inc_owner = (incoming or {}).get('ownerId')
+            if cur_owner and inc_owner and cur_owner == inc_owner:
+                # Authoritative owner update: accept whole snapshot
+                rooms_state[room][mode] = incoming
+                last_state_ts[room][mode] = time.time()
+                out_state = incoming
+            else:
+                # If current owner appears inactive, allow takeover by accepting incoming snapshot
+                inactivity = time.time() - float(last_state_ts[room].get(mode) or 0.0)
+                if inactivity > 2.0:
+                    rooms_state[room][mode] = incoming
+                    last_state_ts[room][mode] = time.time()
+                    out_state = incoming
+                else:
+                    # Non-owner update: merge only the sender's player presence/cosmetics; do not override simulation
+                    out_state = dict(current)
+                    # Deep copy nested structures we will mutate
+                    out_state['players'] = dict(cur_players)
+
+                    inc_me = inc_players.get(client_id)
+                    if inc_me:
+                        if client_id not in out_state['players']:
+                            # Add full player object so the owner has necessary defaults (size, name, etc.)
+                            out_state['players'][client_id] = inc_me
+                        else:
+                            # Update only cosmetic fields; keep kinematics and scores authoritative
+                            me = dict(out_state['players'][client_id])
+                            for k in ('name', 'color'):  # allow harmless cosmetic updates
+                                if inc_me.get(k) is not None:
+                                    me[k] = inc_me.get(k)
+                            out_state['players'][client_id] = me
+                    # Keep everything else (memes, powerups, counts) from current
+                    rooms_state[room][mode] = out_state
+    except Exception:
+        # On any error, fall back to storing incoming to avoid stalling the room
+        rooms_state[room][mode] = incoming
+        out_state = incoming
+
+    emit('state_update', {'room': room, 'mode': mode, 'clientId': client_id, 'state': out_state}, room=room, include_self=False)
 
 
 @socketio.on('memedash_win')

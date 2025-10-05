@@ -581,7 +581,7 @@
       }
     }
 
-    // Overlays
+    // Overlays + record result once on gameover
     if (state.phase === 'gameover') {
       const weWon = (state.winner && myTeam && state.winner === myTeam);
       winnerOverlay.classList.toggle('show', !!weWon);
@@ -589,9 +589,26 @@
       if (state.winner) {
         winnerText.textContent = `Team ${state.winner} Wins!`;
       }
+      // Best-effort: post a result one time per gameover per client
+      try {
+        if (!updateUiFromState._postedResult) {
+          const outcome = weWon ? 'win' : (myTeam ? 'lose' : null);
+          if (outcome && window.recordResult) {
+            window.recordResult({
+              mode: 'battleship',
+              game_name: 'Battleship',
+              outcome,
+              room_pin: window.currentSessionPin,
+              details_json: { challenge_type: 'battleship', team: myTeam }
+            }).catch(() => {});
+          }
+          updateUiFromState._postedResult = true;
+        }
+      } catch(_) { }
     } else {
       winnerOverlay.classList.remove('show');
       loserOverlay.classList.remove('show');
+      updateUiFromState._postedResult = false;
     }
 
     // Ensure ships exist when teams join (only a member places their own team's ships)

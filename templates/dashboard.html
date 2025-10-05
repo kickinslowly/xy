@@ -11,7 +11,7 @@
     <div id="dash" hidden>
       <div class="cards-grid">
         <div class="card">
-          <h2>Per-Mode Summary</h2>
+          <h2>SIGMA SUMMARY</h2>
           <div id="perMode" class="permode-grid"></div>
         </div>
         <div class="card">
@@ -69,18 +69,22 @@
   function renderPerMode(map){
     const root = document.getElementById('perMode');
     root.innerHTML = '';
-    const order = ['plane','line','battleship','memewars','ratios'];
+    const order = ['plane','battleship','memewars','memedash','ratios'];
+    const LABELS = { plane: 'Coordinate Plane', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
+    const ICONS  = { plane: '🧭', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
     order.forEach(m => {
       const s = map[m] || {};
       const div = document.createElement('div');
       div.className = 'permode-card';
+      const label = LABELS[m] || (m.charAt(0).toUpperCase() + m.slice(1));
+      const icon = ICONS[m] || '🎯';
       div.innerHTML = `
-        <div class="permode-title">${m.replace(/(^.|-.)*/g,'') || m}</div>
+        <div class="permode-title"><span class="permode-icon">${icon}</span> ${label}</div>
         <div class="permode-metrics">
-          <div><span class="k">Total</span><span class="v">${s.total_games||0}</span></div>
-          <div><span class="k">Completed</span><span class="v">${s.wins_or_completed||0}</span></div>
-          <div><span class="k">Avg Score</span><span class="v">${fmt(s.avg_score)}</span></div>
-          <div><span class="k">Best</span><span class="v">${fmt(s.best_score)}</span></div>
+          <div><span class="k">Total</span> <span class="v">${s.total_games||0}</span></div>
+          <div><span class="k">Completed</span> <span class="v">${s.wins_or_completed||0}</span></div>
+          <div><span class="k">Avg Score</span> <span class="v">${fmt(s.avg_score)}</span></div>
+          <div><span class="k">Best</span> <span class="v">${fmt(s.best_score)}</span></div>
         </div>
       `;
       root.appendChild(div);
@@ -96,11 +100,15 @@
       li.textContent = 'No activity yet. Play a game to get started!';
       ul.appendChild(li); return;
     }
+    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
+    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
     list.forEach(r => {
       const li = document.createElement('li');
       const date = r.played_at ? new Date(r.played_at) : null;
       const when = date ? date.toLocaleString() : '';
-      li.innerHTML = `<span class="tag">${r.mode}</span> <strong>${r.game_name||''}</strong> — ${r.outcome||'played'}${r.score!=null?` · score ${fmt(r.score)}`:''} <span class="muted">${when}</span>`;
+      const friendly = LABELS[r.mode] || (r.mode || '').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+      const icon = ICONS[r.mode] || '🎯';
+      li.innerHTML = `<span class="tag"><span class="tag-emoji">${icon}</span> ${friendly}</span> <strong>${r.game_name||''}</strong> — ${r.outcome||'played'}${r.score!=null?` · score ${fmt(r.score)}`:''} <span class="muted">${when}</span>`;
       ul.appendChild(li);
     });
   }
@@ -109,16 +117,26 @@
     const root = document.getElementById('achievements');
     root.innerHTML = '';
     if(!list.length){ root.textContent = 'No achievements defined.'; return; }
+    const LABELS = { plane: 'Coordinate Plane', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios', line: 'Line Graph' };
     list.forEach(a => {
       const div = document.createElement('div');
+      const friendlyMode = LABELS[a.mode] || (a.mode || '').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
       div.className = 'achievement' + (a.unlocked ? ' unlocked' : '');
-      const when = a.unlocked_at ? new Date(a.unlocked_at).toLocaleDateString() : '';
+      const when = a.unlocked_at ? new Date(a.unlocked_at).toLocaleString() : '';
+      const percent = Math.max(0, Math.min(1, Number(a.percent || 0)));
+      const pctStr = Math.round(percent * 100) + '%';
+      const progressHtml = `
+        <div class="achv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${a.threshold}" aria-valuenow="${Math.min(a.current||0, a.threshold)}" aria-label="Progress">
+          <div class="achv-bar"><div class="achv-bar-fill" style="width:${pctStr}"></div></div>
+          <div class="achv-count">${a.progress_text || ((a.current||0) + '/' + a.threshold)}</div>
+        </div>`;
       div.innerHTML = `
         <div class="achv-icon">${a.unlocked ? '🏆' : '🔒'}</div>
         <div class="achv-body">
-          <div class="achv-title">${a.title} <span class="chip">${a.mode}</span></div>
+          <div class="achv-title">${a.title} <span class="chip">${friendlyMode}</span></div>
           <div class="achv-desc">${a.description || ''}</div>
-          <div class="achv-meta">${a.unlocked ? 'Unlocked ' + when : 'Complete '+a.threshold+' to unlock'}</div>
+          ${progressHtml}
+          <div class="achv-meta">${a.unlocked ? ('Unlocked ' + when + ' 🎉') : ('Only ' + (a.remaining||a.threshold) + ' to go!')}</div>
         </div>`;
       root.appendChild(div);
     });
@@ -127,28 +145,100 @@
   document.addEventListener('DOMContentLoaded', loadDashboard);
   document.addEventListener('app:auth', loadDashboard);
   document.addEventListener('app:logout', loadDashboard);
+  document.addEventListener('app:result', loadDashboard);
 })();
 </script>
 <style>
-.page-dashboard .cards-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+/* Page background with playful, subtle gradients (respects dark/light tokens) */
+body.page-dashboard {
+  background:
+    radial-gradient(1200px 800px at -10% -10%, color-mix(in hsl, var(--accent) 18%, transparent), transparent 50%),
+    radial-gradient(900px 600px at 110% 110%, color-mix(in hsl, var(--success) 16%, transparent), transparent 46%),
+    linear-gradient(180deg, color-mix(in hsl, var(--surface) 12%, transparent), color-mix(in hsl, var(--bg) 88%, var(--surface)) 60%);
+  background-color: var(--bg);
+}
+
+.section { padding-block: clamp(16px, 3vw, 32px); }
+.page-dashboard h1 {
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: clamp(26px, 4vw, 40px);
+  margin: 0 0 .5rem 0;
+  font-family: "Segoe UI Rounded", "SF Pro Rounded", "Nunito", "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+}
+
+/* fun, rounded display font for titles/cards without external requests */
+.page-dashboard .permode-title,
+.page-dashboard .achv-title { 
+  font-family: "Segoe UI Rounded", "SF Pro Rounded", "Nunito", "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+}
+
+.page-dashboard .cards-grid { display: grid; grid-template-columns: 1fr; gap: var(--gap-lg); }
 @media (min-width: 900px) { .page-dashboard .cards-grid { grid-template-columns: 1.2fr .8fr; } }
-.card { background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.permode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; }
-.permode-card { border: 1px solid #eee; border-radius: 8px; padding: .75rem; background: #fafafa; }
-.permode-title { font-weight: 600; margin-bottom: .5rem; text-transform: capitalize; }
-.permode-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem .5rem; }
-.permode-metrics .k { color: #666; font-size: .9rem; }
-.permode-metrics .v { font-weight: 600; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: clamp(14px, 2.5vw, 22px);
+  box-shadow: var(--shadow);
+}
+
+.permode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--gap); }
+.permode-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .9rem;
+  background: var(--surface-2);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.permode-card:hover { transform: translateY(-2px); border-color: color-mix(in hsl, var(--accent) 45%, var(--border)); box-shadow: 0 8px 20px rgba(0,0,0,.24); }
+
+.permode-title { font-weight: 800; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+.permode-title .permode-icon { font-size: 1.2rem; }
+
+.permode-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem .75rem; }
+.permode-metrics .k { color: var(--text-muted); font-size: .95rem; }
+.permode-metrics .v { font-weight: 800; color: var(--text); }
+
 .recent-list { list-style: none; padding: 0; margin: 0; }
-.recent-list li { padding: .5rem 0; border-bottom: 1px solid #eee; }
+.recent-list li { padding: .6rem 0; border-bottom: 1px solid var(--border); }
 .recent-list li:last-child { border-bottom: 0; }
-.tag { background:#eef; color:#225; border-radius: 4px; padding: .1rem .4rem; margin-right: .25rem; font-size: .8rem; }
-.muted { color: #666; }
-.achievements { display: grid; gap: .5rem; }
-.achievement { display: grid; grid-template-columns: 36px 1fr; gap: .6rem; align-items: center; border:1px solid #eee; border-radius:8px; padding:.5rem .75rem; background:#fafafa; }
-.achievement.unlocked { border-color:#d7f2d7; background:#f6fff6; }
+
+.tag {
+  background: color-mix(in hsl, var(--accent) 18%, transparent);
+  color: var(--text);
+  border: 1px solid color-mix(in hsl, var(--accent) 55%, var(--border));
+  border-radius: 999px;
+  padding: .12rem .55rem;
+  margin-right: .4rem;
+  font-size: .82rem;
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.tag .tag-emoji { filter: saturate(1.2); }
+
+.muted { color: var(--text-muted); }
+
+.achievements { display: grid; gap: .6rem; }
+.achievement { display: grid; grid-template-columns: 36px 1fr; gap: .75rem; align-items: center; border:1px solid var(--border); border-radius:var(--radius-sm); padding:.75rem 1rem; background: var(--surface-2); }
+.achievement.unlocked { border-color: color-mix(in hsl, var(--success) 45%, var(--border)); background: color-mix(in hsl, var(--success) 10%, var(--surface-2)); box-shadow: 0 0 0 2px color-mix(in hsl, var(--success) 20%, transparent) inset; }
 .achv-icon { font-size: 1.5rem; }
-.achv-title { font-weight: 700; }
-.chip { font-size: .75rem; background:#eee; margin-left:.4rem; padding:.05rem .4rem; border-radius: 999px; }
+.achv-title { font-weight: 800; }
+.chip { font-size: .75rem; background: color-mix(in hsl, var(--accent) 12%, transparent); border: 1px solid color-mix(in hsl, var(--accent) 40%, var(--border)); margin-left:.4rem; padding:.05rem .45rem; border-radius: 999px; }
+
+/* Achievements progress visuals */
+.achv-progress { margin-top: .6rem; display: flex; align-items: center; gap: .6rem; }
+.achv-bar { flex: 1; height: 10px; background: var(--surface); border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.18); }
+.achv-bar-fill { height: 100%; background: linear-gradient(90deg, #60a5fa, #22d3ee); transition: width .4s ease; }
+.achievement.unlocked .achv-bar-fill { background: linear-gradient(90deg, #34d399, #10b981, #f59e0b); animation: achv-shine 2.2s linear infinite; }
+.achv-count { min-width: 62px; text-align: right; font-weight: 800; color: var(--text); }
+@keyframes achv-shine { 0% { filter: brightness(1); } 50% { filter: brightness(1.25); } 100% { filter: brightness(1); } }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .permode-card { transition: none; }
+  .permode-card:hover { transform: none; box-shadow: none; }
+  .achievement.unlocked .achv-bar-fill { animation: none; }
+}
 </style>
 {% endblock %}
