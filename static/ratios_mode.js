@@ -335,9 +335,9 @@
     let correct = false;
     if (ch.type === 'equiv') {
       if (aCount > 0 && bCount > 0) {
-        const g = gcd(aCount, bCount);
-        const ra = aCount / g, rb = bCount / g;
-        correct = (ra === ch.a && rb === ch.b) && !(aCount === ch.a && bCount === ch.b);
+        // Correct if the player's pair is proportional to the prompt pair,
+        // but not the exact same counts (to enforce "equivalent", not identical).
+        correct = (aCount * ch.b === bCount * ch.a) && !(aCount === ch.a && bCount === ch.b);
       }
     } else if (ch.type === 'partwhole') {
       const which = ch.which === 'b' ? 'b' : 'a'; // default to 'a' for older states
