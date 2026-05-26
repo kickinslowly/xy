@@ -428,20 +428,30 @@
     while (b) { const t = b; b = a % b; a = t; }
     return a || 1;
   }
-  function toFractionApprox(x, maxDenPow = 6) {
-    // Convert float to fraction by clearing up to 10^maxDenPow decimals
+  function toFractionApprox(x, maxDen = 1000) {
+    // Find the smallest-denominator rational n/d (d <= maxDen) closest to x.
+    // Replaces the prior "round to 6 decimals" approach which produced ugly
+    // results like 333333/1000000 for 1/3. Now 1/3 -> 1/3, 2/3 -> 2/3, etc.
     if (!Number.isFinite(x)) return { num: 0, den: 1 };
     if (Math.abs(x) < 1e-12) return { num: 0, den: 1 };
-    const s = x.toFixed(maxDenPow);
-    const parts = s.split('.')
-    if (parts.length === 1) return { num: parseInt(parts[0], 10), den: 1 };
-    const decimals = parts[1].replace(/0+$/,'');
-    if (decimals.length === 0) return { num: parseInt(parts[0], 10), den: 1 };
-    const den = Math.pow(10, decimals.length);
-    const num = Math.round(parseFloat(s) * den);
-    const g = gcdInt(num, den);
-    const sign = num < 0 ? -1 : 1;
-    return { num: sign * Math.abs(num / g), den: Math.abs(den / g) };
+    const sign = x < 0 ? -1 : 1;
+    const ax = Math.abs(x);
+    let bestNum = Math.round(ax);
+    let bestDen = 1;
+    let bestErr = Math.abs(ax - bestNum);
+    for (let d = 2; d <= maxDen; d++) {
+      const n = Math.round(ax * d);
+      if (n === 0) continue;
+      const err = Math.abs(ax - n / d);
+      if (err < bestErr - 1e-15) {
+        bestNum = n;
+        bestDen = d;
+        bestErr = err;
+        if (err < 1e-12) break;
+      }
+    }
+    const g = gcdInt(bestNum, bestDen);
+    return { num: sign * (bestNum / g), den: bestDen / g };
   }
   function divideFractions(n1, d1, n2, d2) {
     // (n1/d1) / (n2/d2) = (n1*d2)/(d1*n2)
@@ -488,15 +498,16 @@
   }
   function formatEquationFromMB(m, b) {
     if (!Number.isFinite(m) || !Number.isFinite(b)) return '';
-    const mRounded = round2(m);
+    // Pass raw m (not round2) to toFractionApprox so 1/3 stays 1/3.
+    // round2 is still useful for the horizontal-line check and intercept display.
     const bRounded = round2(b);
     // y = b (horizontal)
-    if (Math.abs(mRounded) < 1e-12) {
+    if (Math.abs(m) < 1e-9) {
       const bStr = formatIntercept(bRounded);
       return `y = ${bStr}`;
     }
     // slope part
-    const mFrac = toFractionApprox(mRounded);
+    const mFrac = toFractionApprox(m);
     let mStr = formatFraction(mFrac.num, mFrac.den);
     if (mStr === '1') mStr = 'x';
     else if (mStr === '-1') mStr = '−x';
@@ -530,35 +541,234 @@
   let currentChallenge = null; // { type: 'line', m, b, label }
   let wrongTimer = null;
 
+  // Adaptive difficulty: 0=Beginner, 1=Developing, 2=Proficient, 3=Advanced.
+  // State + streak math live in static/adaptive_difficulty.js (shared with ratios_mode.js).
+  // Level persists per-mode to localStorage; badge stays in sync across page loads.
+  const ADAPTIVE_MODE_KEY = 'plane';
+  const DIFF_LABELS = (window.AdaptiveDifficulty && window.AdaptiveDifficulty.LABELS) || ['Beginner', 'Developing', 'Proficient', 'Advanced'];
+  let challengeDifficulty = (window.AdaptiveDifficulty ? window.AdaptiveDifficulty.getLevel(ADAPTIVE_MODE_KEY) : 1);
+  const FRAC_SLOPES = [1/2, 1/3, 2/3, 3/4, 3/2, 4/3];
+
+  function adjustDifficulty(correct) {
+    if (!window.AdaptiveDifficulty) return;
+    const r = window.AdaptiveDifficulty.recordResult(ADAPTIVE_MODE_KEY, !!correct);
+    challengeDifficulty = r.level;
+    window.AdaptiveDifficulty.updateBadges(r.level);
+    if (r.levelChanged) showDifficultyChange(r.increased);
+  }
+  function updateDifficultyBadge() {
+    if (window.AdaptiveDifficulty) window.AdaptiveDifficulty.updateBadges(challengeDifficulty);
+  }
+  function showDifficultyChange(increased) {
+    var bar = document.getElementById('challengeBar');
+    if (!bar) return;
+    bar.classList.add(increased ? 'diff-up' : 'diff-down');
+    setTimeout(function() { bar.classList.remove('diff-up', 'diff-down'); }, 1200);
+  }
+  // Initialize badge on load
+  try { updateDifficultyBadge(); } catch(e) {}
+
   function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
   function pickRandomLine() {
-    // Friendly integers for now
-    let m = randomInt(-3, 3);
-    // Avoid both m=0 and b=0 too often; keep variety
-    if (m === 0 && Math.random() < 0.5) m = randomInt(1, 3) * (Math.random() < 0.5 ? -1 : 1);
-    const b = randomInt(-8, 8);
+    let m, b;
+    switch (challengeDifficulty) {
+      case 0: // Beginner: positive slopes, small intercepts
+        m = randomInt(1, 2);
+        b = randomInt(0, 3);
+        break;
+      case 2: // Proficient: wider range, some fractional slopes
+        if (Math.random() < 0.3) {
+          m = FRAC_SLOPES[randomInt(0, FRAC_SLOPES.length - 1)] * (Math.random() < 0.5 ? -1 : 1);
+        } else {
+          m = randomInt(-4, 4);
+          // Always replace m=0 (horizontal y=b prompts are pedagogically weak here)
+          if (m === 0) m = randomInt(1, 4) * (Math.random() < 0.5 ? -1 : 1);
+        }
+        b = randomInt(-8, 8);
+        break;
+      case 3: // Advanced: frequent fractions, full range
+        if (Math.random() < 0.5) {
+          m = FRAC_SLOPES[randomInt(0, FRAC_SLOPES.length - 1)] * (Math.random() < 0.5 ? -1 : 1);
+        } else {
+          m = randomInt(-5, 5);
+        }
+        b = randomInt(-10, 10);
+        break;
+      default: // Developing (1): integer slopes, moderate intercepts
+        m = randomInt(-3, 3);
+        // Always replace m=0 (avoid "y = 3" horizontal prompts students don't know how to plot)
+        if (m === 0) m = randomInt(1, 3) * (Math.random() < 0.5 ? -1 : 1);
+        b = randomInt(-5, 5);
+    }
     return { type: 'line', m, b, label: formatEquationFromMB(m, b) };
   }
   function pickRandomVertex() {
-    // Friendly integer coordinates
-    const x = randomInt(-9, 9);
-    let y = randomInt(-9, 9);
-    // Avoid (0,0) too frequently
-    if (x === 0 && y === 0 && Math.random() < 0.5) {
-      y = randomInt(1, 9) * (Math.random() < 0.5 ? -1 : 1);
+    let x, y;
+    switch (challengeDifficulty) {
+      case 0: // Beginner: Q1 only, small positives
+        x = randomInt(1, 5);
+        y = randomInt(1, 5);
+        break;
+      case 2: // Proficient: wider range
+        x = randomInt(-8, 8);
+        y = randomInt(-8, 8);
+        break;
+      case 3: // Advanced: full range, deliberate axis points
+        if (Math.random() < 0.2) {
+          if (Math.random() < 0.5) { x = 0; y = randomInt(-9, 9); if (y === 0) y = randomInt(1, 9) * (Math.random() < 0.5 ? -1 : 1); }
+          else { x = randomInt(-9, 9); y = 0; if (x === 0) x = randomInt(1, 9) * (Math.random() < 0.5 ? -1 : 1); }
+        } else {
+          x = randomInt(-9, 9);
+          y = randomInt(-9, 9);
+        }
+        break;
+      default: // Developing (1): all quadrants, moderate range
+        x = randomInt(-5, 5);
+        y = randomInt(-5, 5);
+        if (x === 0 && y === 0) y = randomInt(1, 5) * (Math.random() < 0.5 ? -1 : 1);
     }
-    return { type: 'vertex', x, y, label: `(${formatNumber(x)}, ${formatNumber(y)})` };
+    return { type: 'vertex', subtype: 'point', x, y, label: `(${formatNumber(x)}, ${formatNumber(y)})` };
+  }
+  function pickQuadrantChallenge() {
+    const q = randomInt(1, 4);
+    const labels = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+    return { type: 'vertex', subtype: 'quadrant', quadrant: q, label: `Quadrant ${labels[q]}` };
+  }
+  function pickReflectChallenge() {
+    let ox, oy;
+    switch (challengeDifficulty) {
+      case 0:
+        ox = randomInt(1, 5); oy = randomInt(1, 5);
+        break;
+      case 1:
+        ox = randomInt(-5, 5); oy = randomInt(-5, 5);
+        if (ox === 0 && oy === 0) ox = randomInt(1, 5);
+        break;
+      case 2:
+        ox = randomInt(-7, 7); oy = randomInt(-7, 7);
+        if (ox === 0 && oy === 0) ox = randomInt(1, 7);
+        break;
+      default: // Advanced (3): full range, occasional axis points
+        ox = randomInt(-9, 9); oy = randomInt(-9, 9);
+        if (ox === 0 && oy === 0) ox = randomInt(1, 9);
+    }
+    const axis = Math.random() < 0.5 ? 'x' : 'y';
+    const tx = axis === 'y' ? -ox : ox;
+    const ty = axis === 'x' ? -oy : oy;
+    const axisLabel = axis === 'x' ? 'x-axis' : 'y-axis';
+    return {
+      type: 'vertex', subtype: 'reflect',
+      x: tx, y: ty,
+      originalX: ox, originalY: oy, axis,
+      label: `(${formatNumber(ox)}, ${formatNumber(oy)}) over the ${axisLabel}`
+    };
+  }
+  function pickMidpointChallenge() {
+    let mx, my, dx, dy;
+    switch (challengeDifficulty) {
+      case 0:
+        mx = randomInt(1, 4); my = randomInt(1, 4);
+        dx = randomInt(1, 2); dy = randomInt(1, 2);
+        break;
+      case 1:
+        mx = randomInt(-4, 4); my = randomInt(-4, 4);
+        dx = randomInt(1, 3); dy = randomInt(1, 3);
+        break;
+      default:
+        mx = randomInt(-6, 6); my = randomInt(-6, 6);
+        dx = randomInt(1, 5); dy = randomInt(1, 5);
+    }
+    if (Math.random() < 0.5) dx = -dx;
+    if (Math.random() < 0.5) dy = -dy;
+    const x1 = mx - dx, y1 = my - dy, x2 = mx + dx, y2 = my + dy;
+    return {
+      type: 'vertex', subtype: 'midpoint',
+      x: mx, y: my,
+      p1: { x: x1, y: y1 }, p2: { x: x2, y: y2 },
+      label: `(${formatNumber(x1)}, ${formatNumber(y1)}) and (${formatNumber(x2)}, ${formatNumber(y2)})`
+    };
+  }
+  function pickTwoPointLineChallenge() {
+    let x1, y1, x2, y2;
+    switch (challengeDifficulty) {
+      case 0:
+        x1 = randomInt(0, 4); y1 = randomInt(0, 4);
+        x2 = x1 + randomInt(1, 3); y2 = randomInt(0, 4);
+        break;
+      case 1:
+        x1 = randomInt(-4, 4); y1 = randomInt(-4, 4);
+        x2 = randomInt(-4, 4); y2 = randomInt(-4, 4);
+        while (x1 === x2) x2 = randomInt(-4, 4);
+        break;
+      default:
+        x1 = randomInt(-7, 7); y1 = randomInt(-7, 7);
+        x2 = randomInt(-7, 7); y2 = randomInt(-7, 7);
+        while (x1 === x2) x2 = randomInt(-7, 7);
+    }
+    const m = (y2 - y1) / (x2 - x1);
+    const b = y1 - m * x1;
+    return {
+      type: 'line', subtype: 'twopoints', m, b,
+      p1: { x: x1, y: y1 }, p2: { x: x2, y: y2 },
+      label: `(${formatNumber(x1)}, ${formatNumber(y1)}) and (${formatNumber(x2)}, ${formatNumber(y2)})`
+    };
+  }
+  // Pooled challenge selectors — pick random subtype within category
+  function pickVertexChallenge() {
+    const roll = Math.random();
+    if (roll < 0.30) return pickRandomVertex();
+    if (roll < 0.50) return pickQuadrantChallenge();
+    if (roll < 0.75) return pickReflectChallenge();
+    return pickMidpointChallenge();
+  }
+  function pickLineChallenge() {
+    return Math.random() < 0.4 ? pickTwoPointLineChallenge() : pickRandomLine();
+  }
+  // Per-subtype UI helpers
+  function challengePromptFor(ch) {
+    if (!ch) return '';
+    switch (ch.subtype) {
+      case 'quadrant': return `Plot any point in ${ch.label}`;
+      case 'reflect': return `Reflect ${ch.label}`;
+      case 'midpoint': return `Plot the midpoint of ${ch.label}`;
+      case 'twopoints': return `Graph the line through ${ch.label}`;
+      default: return ch.type === 'vertex' ? `Plot this point: ${ch.label}` : `Graph this: ${ch.label}`;
+    }
+  }
+  function challengeBadgeLabel(ch) {
+    if (!ch) return 'CHALLENGE';
+    switch (ch.subtype) {
+      case 'quadrant': return 'QUADRANT';
+      case 'reflect': return 'REFLECT';
+      case 'midpoint': return 'MIDPOINT';
+      case 'twopoints': return 'TWO POINTS';
+      default: return ch.type === 'vertex' ? 'VERTEX' : 'LINE';
+    }
+  }
+  function challengeGameName(ch) {
+    if (!ch) return 'Challenge';
+    switch (ch.subtype) {
+      case 'quadrant': return 'Quadrant Challenge';
+      case 'reflect': return 'Reflection Challenge';
+      case 'midpoint': return 'Midpoint Challenge';
+      case 'twopoints': return 'Two-Point Line';
+      default: return ch.type === 'vertex' ? 'Vertex Challenge' : 'Line Challenge';
+    }
+  }
+  function challengeRecordType(ch) {
+    if (!ch) return 'unknown';
+    if (ch.subtype && ch.subtype !== 'point' && ch.subtype !== 'equation') return ch.subtype;
+    return ch.type;
   }
   function updateChallengeUi() {
+    const idleEl = document.getElementById('challengeIdle');
+    const activeEl = document.getElementById('challengeActiveEl');
+    const badgeEl = document.getElementById('challengeTypeBadge');
     if (challengeTextEl) {
       if (challengeActive && currentChallenge) {
-        if (currentChallenge.type === 'vertex') {
-          challengeTextEl.textContent = `Plot this point: ${currentChallenge.label}`;
-        } else {
-          challengeTextEl.textContent = `Graph this: ${currentChallenge.label}`;
-        }
+        challengeTextEl.textContent = challengePromptFor(currentChallenge);
       } else {
         challengeTextEl.textContent = '';
       }
@@ -567,10 +777,28 @@
       nextChallengeBtn.disabled = !challengeActive;
       try { nextChallengeBtn.style.display = challengeActive ? 'inline-block' : 'none'; } catch {}
     }
+    // Toggle idle/active challenge bar states
+    if (idleEl) idleEl.hidden = challengeActive;
+    if (activeEl) activeEl.hidden = !challengeActive;
+    if (badgeEl && currentChallenge) {
+      badgeEl.textContent = challengeBadgeLabel(currentChallenge);
+      badgeEl.className = 'challenge-type-badge' + (currentChallenge.type === 'vertex' ? ' badge-vertex' : '');
+    }
   }
   function setChallengeActive(on) {
     challengeActive = !!on;
-    if (!challengeActive) {
+    if (challengeActive) {
+      // Force grid step to 1 so generated integer-coordinate challenges are
+      // always reachable on the snap grid (otherwise step 2/5 makes some
+      // midpoints / reflections unreachable).
+      try {
+        if (gridStepSelect && gridStepSelect.value !== '1') {
+          gridStepSelect.value = '1';
+          gridStepUnits = 1;
+          draw();
+        }
+      } catch {}
+    } else {
       // Cleanup any pending wrong feedback
       if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
       hideFailToast();
@@ -631,27 +859,36 @@
     challengeActive = true;
     removeChallengeAnswerOverlays();
     clearAllSilently();
-    currentChallenge = (type === 'vertex') ? pickRandomVertex() : pickRandomLine();
+    currentChallenge = (type === 'vertex') ? pickVertexChallenge() : pickLineChallenge();
     updateChallengeUi();
   }
   function afterAddVertex(newVertex) {
     try {
       if (!challengeActive || !currentChallenge || currentChallenge.type !== 'vertex' || !newVertex) return;
       const tol = 1e-6;
-      const ok = Math.abs(newVertex.x - currentChallenge.x) <= tol && Math.abs(newVertex.y - currentChallenge.y) <= tol;
+      let ok = false;
+      if (currentChallenge.subtype === 'quadrant') {
+        const q = currentChallenge.quadrant;
+        if (q === 1) ok = newVertex.x > tol && newVertex.y > tol;
+        else if (q === 2) ok = newVertex.x < -tol && newVertex.y > tol;
+        else if (q === 3) ok = newVertex.x < -tol && newVertex.y < -tol;
+        else if (q === 4) ok = newVertex.x > tol && newVertex.y < -tol;
+      } else {
+        ok = Math.abs(newVertex.x - currentChallenge.x) <= tol && Math.abs(newVertex.y - currentChallenge.y) <= tol;
+      }
       if (ok) {
         if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
         hideFailToast();
         removeChallengeAnswerOverlays();
         showRewardToast();
-        // Record successful vertex challenge for dashboard/achievements
+        adjustDifficulty(true);
         try {
           if (window.recordResult) {
             window.recordResult({
               mode: 'plane',
-              game_name: 'Vertex Challenge',
+              game_name: challengeGameName(currentChallenge),
               outcome: 'success',
-              details_json: { challenge_type: 'vertex', correct: true, x: currentChallenge.x, y: currentChallenge.y }
+              details_json: { challenge_type: challengeRecordType(currentChallenge), correct: true, difficulty: DIFF_LABELS[challengeDifficulty] }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
@@ -663,16 +900,17 @@
       } else {
         if (wrongTimer) return; // already showing feedback
         removeChallengeAnswerOverlays();
-        addChallengeAnswerVertex();
+        if (currentChallenge.subtype !== 'quadrant') addChallengeAnswerVertex();
         draw();
         showFailToast();
+        adjustDifficulty(false);
         try {
           if (window.recordResult) {
             window.recordResult({
               mode: 'plane',
-              game_name: 'Vertex Challenge',
+              game_name: challengeGameName(currentChallenge),
               outcome: 'incorrect',
-              details_json: { challenge_type: 'vertex', correct: false, x: newVertex.x, y: newVertex.y }
+              details_json: { challenge_type: challengeRecordType(currentChallenge), correct: false, difficulty: DIFF_LABELS[challengeDifficulty] }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
@@ -682,7 +920,7 @@
           removeChallengeAnswerOverlays();
           clearAllSilently();
           if (challengeActive && currentChallenge && challengeTextEl) {
-            challengeTextEl.textContent = `Try again! Plot this point: ${currentChallenge.label}`;
+            challengeTextEl.textContent = `Try again! ${challengePromptFor(currentChallenge)}`;
           } else {
             updateChallengeUi();
           }
@@ -704,24 +942,49 @@
     if (!rewardToast) return;
     rewardToast.hidden = false;
     rewardToast.classList.add('show');
+    try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
   }
   function hideRewardToast() {
     if (!rewardToast) return;
     rewardToast.classList.remove('show');
     rewardToast.hidden = true;
   }
-  function showFailToast() {
+  // Default fail-toast HTML, captured once so custom-message paths can restore it.
+  const _failToastDefaultHTML = (failToast && failToast.querySelector('.fail-text'))
+    ? failToast.querySelector('.fail-text').innerHTML
+    : '';
+  function showFailToast(msg) {
     if (!failToast) return;
+    const txtEl = failToast.querySelector('.fail-text');
+    if (txtEl) {
+      if (typeof msg === 'string' && msg) {
+        // Custom hint path: build via textContent to avoid HTML injection.
+        txtEl.innerHTML = '';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Heads up.';
+        txtEl.appendChild(strong);
+        txtEl.appendChild(document.createTextNode(' ' + msg));
+      } else if (_failToastDefaultHTML) {
+        txtEl.innerHTML = _failToastDefaultHTML;
+      }
+    }
     failToast.hidden = false;
     failToast.classList.add('show');
+    try { if (window.SoundFX) window.SoundFX.play('fail'); } catch(_){}
   }
   function hideFailToast() {
     if (!failToast) return;
     failToast.classList.remove('show');
     failToast.hidden = true;
+    // Restore default text so the next "wrong answer" toast looks right.
+    const txtEl = failToast.querySelector('.fail-text');
+    if (txtEl && _failToastDefaultHTML) txtEl.innerHTML = _failToastDefaultHTML;
   }
   function clearAllSilently() {
-    // Reset all content without confirmation
+    // Reset all content without confirmation. Does NOT push history or
+    // broadcast — challenge feedback (wrong-answer reveal) calls this every 3s
+    // and must not stomp peer canvases. Callers that want persistence should
+    // invoke pushHistory() themselves.
     vertices.length = 0;
     lines.length = 0;
     infiniteLines.length = 0;
@@ -729,21 +992,32 @@
     nextInfiniteLineId = 1;
     selectionCounter = 1;
     draw();
-    pushHistory();
   }
   function nextChallenge() {
     if (!challengeActive) return;
     if (currentChallenge && currentChallenge.type === 'vertex') {
-      currentChallenge = pickRandomVertex();
+      currentChallenge = pickVertexChallenge();
     } else {
-      currentChallenge = pickRandomLine();
+      currentChallenge = pickLineChallenge();
     }
     updateChallengeUi();
   }
   function afterAddInfiniteLine(newLine) {
     try {
       if (!challengeActive || !currentChallenge || currentChallenge.type !== 'line' || !newLine) return;
-      if (newLine.vertical) return; // Only y=mx+b challenges for now
+      if (newLine.vertical) {
+        // Don't count as a wrong answer (no difficulty change) but tell the
+        // student why their line wasn't accepted. Skip if a wrong-answer
+        // reveal is already showing — overriding that toast and hiding it
+        // 2.2s later would clobber the existing 3s reveal flow.
+        if (wrongTimer) return;
+        showFailToast('Vertical lines have undefined slope. Try y = mx + b form.');
+        setTimeout(() => {
+          // Only hide if no wrongTimer became active in the meantime.
+          if (!wrongTimer) hideFailToast();
+        }, 2200);
+        return;
+      }
       const tol = 1e-6;
       const ok = Math.abs((newLine.m ?? NaN) - currentChallenge.m) <= tol && Math.abs((newLine.b ?? NaN) - currentChallenge.b) <= tol;
       if (ok) {
@@ -752,14 +1026,14 @@
         hideFailToast();
         removeChallengeAnswerOverlays();
         showRewardToast();
-        // Record successful line challenge for dashboard/achievements
+        adjustDifficulty(true);
         try {
           if (window.recordResult) {
             window.recordResult({
               mode: 'plane',
-              game_name: 'Line Challenge',
+              game_name: challengeGameName(currentChallenge),
               outcome: 'success',
-              details_json: { challenge_type: 'line', correct: true, m: currentChallenge.m, b: currentChallenge.b }
+              details_json: { challenge_type: challengeRecordType(currentChallenge), correct: true, m: currentChallenge.m, b: currentChallenge.b, difficulty: DIFF_LABELS[challengeDifficulty] }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
@@ -776,24 +1050,24 @@
         addChallengeAnswerLine();
         draw();
         showFailToast();
+        adjustDifficulty(false);
         try {
           if (window.recordResult) {
             window.recordResult({
               mode: 'plane',
-              game_name: 'Line Challenge',
+              game_name: challengeGameName(currentChallenge),
               outcome: 'incorrect',
-              details_json: { challenge_type: 'line', correct: false, m: currentChallenge.m, b: currentChallenge.b }
+              details_json: { challenge_type: challengeRecordType(currentChallenge), correct: false, m: currentChallenge.m, b: currentChallenge.b, difficulty: DIFF_LABELS[challengeDifficulty] }
             }).catch(() => {});
           }
         } catch (e) { /* ignore */ }
-        // Linger for 3 seconds then clear and prompt to try again
         wrongTimer = setTimeout(() => {
           wrongTimer = null;
           hideFailToast();
           removeChallengeAnswerOverlays();
           clearAllSilently();
           if (challengeActive && currentChallenge && challengeTextEl) {
-            challengeTextEl.textContent = `Try again! Graph this: ${currentChallenge.label}`;
+            challengeTextEl.textContent = `Try again! ${challengePromptFor(currentChallenge)}`;
           } else {
             updateChallengeUi();
           }
@@ -813,6 +1087,12 @@
       if (!challengeActive) return;
       clearAllSilently();
       nextChallenge();
+    });
+  }
+  const stopChallengeBtn = document.getElementById('stopChallengeBtn');
+  if (stopChallengeBtn) {
+    stopChallengeBtn.addEventListener('click', () => {
+      setChallengeActive(false);
     });
   }
 

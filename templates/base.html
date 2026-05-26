@@ -13,18 +13,26 @@
   <body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
       <div class="container header-inner">
-        <div class="brand">
-          <a href="{{ url_for('index') }}" class="brand-link">Mr. A's Math Tools</a>
-        </div>
-        <nav class="top-actions">
-          <div class="modes-nav" role="navigation" aria-label="Modes">
-            <a href="{{ url_for('index') }}" class="mode-link {% if request.path == url_for('index') %}is-active{% endif %}" {% if request.path == url_for('index') %}aria-current="page"{% endif %}>Coordinate Plane</a>
-            <a href="{{ url_for('line_mode') }}" class="mode-link {% if request.path == url_for('line_mode') %}is-active{% endif %}" {% if request.path == url_for('line_mode') %}aria-current="page"{% endif %}>Line Graph</a>
-            <a href="{{ url_for('battleship') }}" class="mode-link {% if request.path == url_for('battleship') %}is-active{% endif %}" {% if request.path == url_for('battleship') %}aria-current="page"{% endif %}>Battleship</a>
-            <a href="{{ url_for('meme_wars') }}" class="mode-link {% if request.path == url_for('meme_wars') %}is-active{% endif %}" {% if request.path == url_for('meme_wars') %}aria-current="page"{% endif %}>Meme Wars</a>
-            <a href="{{ url_for('meme_dash') }}" class="mode-link {% if request.path == url_for('meme_dash') %}is-active{% endif %}" {% if request.path == url_for('meme_dash') %}aria-current="page"{% endif %}>Meme Dash</a>
-            <a href="{{ url_for('ratios_mode') }}" class="mode-link {% if request.path == url_for('ratios_mode') %}is-active{% endif %}" {% if request.path == url_for('ratios_mode') %}aria-current="page"{% endif %}>Ratios</a>
-            <a href="{{ url_for('dashboard_page') }}" class="mode-link {% if request.path == url_for('dashboard_page') %}is-active{% endif %}" {% if request.path == url_for('dashboard_page') %}aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('home') }}" class="brand-link" aria-label="Home">Mr. A's Math Tools</a>
+
+        <!-- Mobile hamburger -->
+        <button class="nav-toggle" id="navToggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="mainNav">
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+        </button>
+
+        <nav class="main-nav" id="mainNav" role="navigation" aria-label="Game modes">
+          <div class="modes-nav">
+            <a href="{{ url_for('plane') }}" class="mode-link {% if request.path == url_for('plane') %}is-active{% endif %}">Plane</a>
+            <a href="{{ url_for('line_mode') }}" class="mode-link {% if request.path == url_for('line_mode') %}is-active{% endif %}">Lines</a>
+            <a href="{{ url_for('battleship') }}" class="mode-link {% if request.path == url_for('battleship') %}is-active{% endif %}">Battleship</a>
+            <a href="{{ url_for('meme_wars') }}" class="mode-link {% if request.path == url_for('meme_wars') %}is-active{% endif %}">Meme Wars</a>
+            <a href="{{ url_for('meme_dash') }}" class="mode-link {% if request.path == url_for('meme_dash') %}is-active{% endif %}">Meme Dash</a>
+            <a href="{{ url_for('ratios_mode') }}" class="mode-link {% if request.path == url_for('ratios_mode') %}is-active{% endif %}">Ratios</a>
+            <a href="{{ url_for('subitize_mode') }}" class="mode-link {% if request.path == url_for('subitize_mode') %}is-active{% endif %}">Subitize</a>
+            <a href="{{ url_for('shop_page') }}" class="mode-link {% if request.path == url_for('shop_page') %}is-active{% endif %}">Shop</a>
+            <a href="{{ url_for('dashboard_page') }}" class="mode-link {% if request.path == url_for('dashboard_page') %}is-active{% endif %}">Dashboard</a>
           </div>
           <div class="auth-controls">
             {% if GOOGLE_CLIENT_ID %}
@@ -38,6 +46,9 @@
             {% endif %}
           </div>
           {% block top_actions %}{% endblock %}
+          <button id="soundToggle" type="button" class="sound-toggle" aria-label="Toggle sound" title="Toggle sound effects">
+            <span class="sound-icon" aria-hidden="true"></span>
+          </button>
         </nav>
       </div>
     </header>
@@ -48,7 +59,7 @@
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <small>© 2025 — Aaron Allen</small>
+        <small>© {{ now.year }} — Aaron Allen</small>
       </div>
     </footer>
 
@@ -118,12 +129,310 @@
           const data = await res.json().catch(() => ({}));
           if(!res.ok){ console.warn('recordResult failed', data); return { ok:false, error:data }; }
           try { document.dispatchEvent(new CustomEvent('app:result', { detail: { payload: (payload || {}), result: data } })); } catch(_) {}
+          // Show coin toast
+          if(data.coins_earned){
+            try{ showCoinToast(data.coins_earned, data.total_coins); }catch(_){}
+            try{ if(window.SoundFX) window.SoundFX.play('coin'); }catch(_){}
+          }
+          // Show standards toast
+          if(data.standards && data.standards.length){
+            try{ showStandardsToast(data.standards); }catch(_){}
+          }
+          // Show achievement toast
+          if(data.new_achievements && data.new_achievements.length){
+            try{ showAchievementToast(data.new_achievements); }catch(_){}
+            try{ if(window.SoundFX) window.SoundFX.play('achievement'); }catch(_){}
+          }
           return data;
         }catch(e){ console.error('recordResult error', e); return { ok:false, error:e?.message||'error' }; }
       };
+
+      // Toast aria semantics: role=status + aria-live=polite so screen readers
+      // announce reward/standards feedback without interrupting other speech.
+      function _safeText(s){ return String(s == null ? '' : s); }
+
+      // Standards toast notification
+      window.showStandardsToast = function(standards){
+        if (!standards || !standards.length) return;
+        var names = standards.map(function(s){ return _safeText(s.name); });
+        var label = names.length <= 2 ? names.join(' & ') : names[0] + ' +' + (names.length - 1) + ' more';
+        var el = document.createElement('div');
+        el.className = 'standards-toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        var icon = document.createElement('span');
+        icon.className = 'standards-toast-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '\u{1F4DA}';
+        el.appendChild(icon);
+        el.appendChild(document.createTextNode(' ' + label));
+        document.body.appendChild(el);
+        setTimeout(function(){
+          requestAnimationFrame(function(){ el.classList.add('standards-toast-show'); });
+        }, 800);
+        setTimeout(function(){
+          el.classList.remove('standards-toast-show');
+          el.classList.add('standards-toast-hide');
+          setTimeout(function(){ el.remove(); }, 400);
+        }, 3800);
+      };
+
+      // Achievement toast notification
+      window.showAchievementToast = function(achievements){
+        if (!achievements || !achievements.length) return;
+        achievements.forEach(function(ach, i){
+          setTimeout(function(){
+            var el = document.createElement('div');
+            el.className = 'achievement-toast';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            var icon = document.createElement('span');
+            icon.className = 'achievement-toast-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = '\u{1F3C6}';
+            el.appendChild(icon);
+            var text = document.createElement('span');
+            text.textContent = ' ' + _safeText(ach.name || ach.code || 'Achievement Unlocked!');
+            el.appendChild(text);
+            document.body.appendChild(el);
+            setTimeout(function(){
+              requestAnimationFrame(function(){ el.classList.add('achievement-toast-show'); });
+            }, 50);
+            setTimeout(function(){
+              el.classList.remove('achievement-toast-show');
+              el.classList.add('achievement-toast-hide');
+              setTimeout(function(){ el.remove(); }, 400);
+            }, 4500);
+          }, i * 800);
+        });
+      };
+
+      // Coin toast notification
+      window.showCoinToast = function(earned, total){
+        var el = document.createElement('div');
+        el.className = 'coin-toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        var icon = document.createElement('span');
+        icon.className = 'coin-toast-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '\u{1FA99}';
+        el.appendChild(icon);
+        el.appendChild(document.createTextNode(' +' + (earned | 0) + ' coins'));
+        document.body.appendChild(el);
+        requestAnimationFrame(function(){
+          el.classList.add('coin-toast-show');
+        });
+        setTimeout(function(){
+          el.classList.remove('coin-toast-show');
+          el.classList.add('coin-toast-hide');
+          setTimeout(function(){ el.remove(); }, 400);
+        }, 2500);
+      };
+    </script>
+    <style>
+      .coin-toast {
+        position: fixed;
+        top: 20px;
+        right: clamp(8px, 4vw, 20px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px;
+        max-width: calc(100vw - 32px);
+        background: var(--surface, #151924);
+        border: 1px solid #f59e0b;
+        border-radius: 999px;
+        box-shadow: 0 8px 32px rgba(245,158,11,0.3);
+        font-size: 16px;
+        font-weight: 800;
+        color: #f59e0b;
+        transform: translateX(120%);
+        transition: transform 0.3s ease;
+        pointer-events: none;
+      }
+      .coin-toast-icon { font-size: 20px; }
+      .coin-toast-show { transform: translateX(0); }
+      .coin-toast-hide { transform: translateX(120%); }
+      .standards-toast {
+        position: fixed;
+        top: 70px;
+        right: clamp(8px, 4vw, 20px);
+        z-index: 9998;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        background: var(--surface, #151924);
+        border: 1px solid #818cf8;
+        border-radius: 999px;
+        box-shadow: 0 8px 32px rgba(129,140,248,0.25);
+        font-size: 13px;
+        font-weight: 700;
+        color: #a5b4fc;
+        transform: translateX(120%);
+        transition: transform 0.3s ease;
+        pointer-events: none;
+        max-width: min(360px, calc(100vw - 32px));
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .standards-toast-icon { font-size: 16px; flex-shrink: 0; }
+      .standards-toast-show { transform: translateX(0); }
+      .standards-toast-hide { transform: translateX(120%); }
+      .achievement-toast {
+        position: fixed;
+        top: 120px;
+        right: clamp(8px, 4vw, 20px);
+        z-index: 9997;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 22px;
+        background: linear-gradient(135deg, var(--surface, #151924), #1a1a2e);
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(245,158,11,0.35), 0 0 20px rgba(245,158,11,0.15);
+        font-size: 15px;
+        font-weight: 800;
+        color: #fbbf24;
+        transform: translateX(120%);
+        transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        pointer-events: none;
+        max-width: min(360px, calc(100vw - 32px));
+      }
+      .achievement-toast-icon { font-size: 22px; flex-shrink: 0; }
+      .achievement-toast-show { transform: translateX(0); }
+      .achievement-toast-hide { transform: translateX(120%); transition-timing-function: ease-in; }
+      @media (prefers-reduced-motion: reduce) {
+        .coin-toast, .standards-toast, .achievement-toast { transition: none; transform: translateX(0); }
+      }
+    </style>
+    <script>
+      // Apply equipped board theme CSS vars
+      (function(){
+        function applyTheme(){
+          var token = localStorage.getItem('token');
+          if (!token) return;
+          fetch('/api/me/theme', { headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+              if (!data || !data.theme) return;
+              var t = data.theme;
+              var root = document.documentElement;
+              if (t.bg) root.style.setProperty('--bg', t.bg);
+              if (t.surface) root.style.setProperty('--surface', t.surface);
+              if (t.accent) root.style.setProperty('--accent', t.accent);
+              if (t.border) root.style.setProperty('--border', t.border);
+            })
+            .catch(function(){});
+        }
+        document.addEventListener('DOMContentLoaded', applyTheme);
+        document.addEventListener('app:auth', applyTheme);
+      })();
     </script>
     {% endif %}
 
+    <script src="{{ url_for('static', filename='sound.js') }}"></script>
+    <script>
+      // Sound toggle
+      (function(){
+        var btn = document.getElementById('soundToggle');
+        if (!btn || !window.SoundFX) return;
+        function updateIcon(){
+          var on = window.SoundFX.isEnabled();
+          btn.querySelector('.sound-icon').textContent = on ? '🔊' : '🔇';
+          btn.setAttribute('aria-label', on ? 'Mute sound' : 'Unmute sound');
+        }
+        updateIcon();
+        btn.addEventListener('click', function(){
+          window.SoundFX.toggle();
+          updateIcon();
+          if (window.SoundFX.isEnabled()) window.SoundFX.play('click');
+        });
+      })();
+
+      // Mobile nav toggle
+      (function(){
+        const btn = document.getElementById('navToggle');
+        const nav = document.getElementById('mainNav');
+        if (btn && nav) {
+          btn.addEventListener('click', () => {
+            const open = nav.classList.toggle('is-open');
+            btn.setAttribute('aria-expanded', open);
+          });
+          // Close on link click (mobile)
+          nav.querySelectorAll('.mode-link').forEach(a => {
+            a.addEventListener('click', () => {
+              nav.classList.remove('is-open');
+              btn.setAttribute('aria-expanded', 'false');
+            });
+          });
+        }
+      })();
+    </script>
+
+    <script>
+      // Modal accessibility: Escape-to-close, focus trap, return-focus.
+      // Applies to any element matching .modal[role="dialog"] that toggles [hidden].
+      (function(){
+        let activeModal = null;
+        let returnFocusTo = null;
+        const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        function focusables(modal){
+          return Array.from(modal.querySelectorAll(FOCUSABLE))
+            .filter(el => el.offsetParent !== null || el === document.activeElement);
+        }
+        function trapTab(e, modal){
+          if (e.key !== 'Tab') return;
+          const f = focusables(modal);
+          if (!f.length) { e.preventDefault(); return; }
+          const first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+          else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+        }
+        function onKey(e){
+          if (!activeModal) return;
+          if (e.key === 'Escape') { e.preventDefault(); activeModal.hidden = true; }
+          else trapTab(e, activeModal);
+        }
+        function onOpen(modal){
+          activeModal = modal;
+          returnFocusTo = document.activeElement;
+          if (modal.getAttribute('aria-modal') !== 'true') modal.setAttribute('aria-modal', 'true');
+          const f = focusables(modal);
+          (f[0] || modal).focus({ preventScroll: true });
+        }
+        function onClose(){
+          activeModal = null;
+          if (returnFocusTo && typeof returnFocusTo.focus === 'function') {
+            try { returnFocusTo.focus({ preventScroll: true }); } catch(e) {}
+          }
+          returnFocusTo = null;
+        }
+        const observer = new MutationObserver(function(records){
+          for (const r of records) {
+            if (r.type !== 'attributes' || r.attributeName !== 'hidden') continue;
+            const el = r.target;
+            if (!el.matches || !el.matches('.modal[role="dialog"]')) continue;
+            if (!el.hidden) onOpen(el);
+            else if (activeModal === el) onClose();
+          }
+        });
+        function observeAll(){
+          document.querySelectorAll('.modal[role="dialog"]').forEach(function(el){
+            if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+            observer.observe(el, { attributes: true, attributeFilter: ['hidden'] });
+          });
+        }
+        document.addEventListener('keydown', onKey);
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observeAll);
+        else observeAll();
+      })();
+    </script>
     {% block extra_scripts %}{% endblock %}
   </body>
 </html>

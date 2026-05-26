@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Subitize — Number Sense{% endblock %}
+{% block body_class %}mode-game mode-subitize{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}" />
+{% endblock %}
+
+{% block content %}
+<header class="app-header full-bleed" role="banner">
+  <nav class="toolbar panels" aria-label="Subitize controls">
+    <div class="subitize-toolbar-left">
+      <div class="mode-pills" role="tablist" aria-label="Operation mode">
+        <button class="mode-pill active" role="tab" aria-selected="true" data-op="multiply" title="Multiplication">Multiply</button>
+        <button class="mode-pill" role="tab" aria-selected="false" data-op="add" title="Addition">Add</button>
+        <button class="mode-pill" role="tab" aria-selected="false" data-op="subtract" title="Subtraction">Subtract</button>
+        <button class="mode-pill" role="tab" aria-selected="false" data-op="divide" title="Division">Divide</button>
+        <button class="mode-pill" role="tab" aria-selected="false" data-op="mixed" title="Mixed operations">Mixed</button>
+      </div>
+    </div>
+
+    <div class="subitize-toolbar-center">
+      <div class="score-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="20" aria-label="Score progress">
+        <div class="score-bar-fill" id="scoreBarFill" style="width:0%"></div>
+        <span class="score-bar-label"><span id="score">0</span> / 20</span>
+      </div>
+      <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
+    </div>
+
+    <div class="subitize-toolbar-right">
+      <button id="flashToggle" type="button" class="mode-pill flash-toggle" title="Flash mode: dots disappear after a brief look">
+        <span class="flash-icon" aria-hidden="true">&#9889;</span> <span class="flash-label">Flash: OFF</span>
+      </button>
+      <button id="skipBtn" type="button" class="btn-3d" title="Skip this problem">Skip</button>
+    </div>
+  </nav>
+</header>
+
+<main class="game-layout full-bleed subitize-layout">
+  <section class="game-main subitize-main">
+    <div class="subitize-prompt" id="promptArea" aria-live="polite">
+      <p class="subitize-question" id="questionText">How many total?</p>
+    </div>
+
+    <div class="subitize-canvas-wrap">
+      <canvas id="subitizeCanvas" width="600" height="400" aria-label="Dot groups visualization"></canvas>
+    </div>
+
+    <div class="subitize-answer-area">
+      <input type="number" id="answerInput" class="subitize-input" placeholder="?" autocomplete="off" inputmode="numeric" aria-label="Your answer" />
+      <button id="submitBtn" class="giant-btn" type="button">Check!</button>
+    </div>
+
+    <div class="subitize-hint" id="hintArea" hidden>
+      <p id="hintText"></p>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite">Nice!</div>
+
+<div id="splashSuccess" class="splash success" role="status" aria-live="polite" aria-label="Correct">
+  <div class="fx-layer strobe" aria-hidden="true"></div>
+  <div class="fx-layer" aria-hidden="true"></div>
+  <div class="content">
+    <h2 class="title">GOT IT!</h2>
+    <p class="sub" id="successSub">Nice number sense!</p>
+  </div>
+</div>
+<div id="splashFail" class="splash fail" role="status" aria-live="polite" aria-label="Try again">
+  <div class="content">
+    <h2 class="title">NOT QUITE!</h2>
+    <p class="sub" id="failSub">Look at the groups again</p>
+  </div>
+</div>
+
+<div id="victory" class="overlay" role="dialog" aria-modal="true" aria-label="Victory">
+  <div class="panel victory-panel">
+    <div id="confetti" aria-hidden="true"></div>
+    <h2 class="victory-title sparkle">SUBITIZE SUPERSTAR!</h2>
+    <p class="victory-sub">20/20 — Number Sense Ninja</p>
+    <div class="victory-actions">
+      <button id="victoryAgain" class="btn-3d warn" type="button">Play Again!</button>
+      <button id="victoryClose" class="btn-3d success" type="button">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='adaptive_difficulty.js') }}"></script>
+  <script src="{{ url_for('static', filename='subitize.js') }}"></script>
+{% endblock %}

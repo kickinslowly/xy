@@ -1,0 +1,907 @@
+{% extends "base.html" %}
+{% block title %}Mr. A's Math Tools — The Arcade{% endblock %}
+{% block body_class %}page-home{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1 class="hero-title">Mr. A's Math Tools</h1>
+    <p class="hero-sub">Pick a game. Learn some math. Have fun.</p>
+    <!-- Player stats row: streak + XP + daily goal -->
+    <div id="playerStats" class="player-stats" hidden>
+      <div class="stat-card streak-card" id="streakCard">
+        <div class="streak-fire" id="streakFire">
+          <svg viewBox="0 0 32 40" class="fire-svg" aria-hidden="true">
+            <path d="M16 0C16 0 10 10 10 18C10 22 12 26 16 28C12 24 12 20 14 16C14 16 16 22 20 24C22 20 22 16 20 12C24 16 26 22 24 28C28 26 30 22 30 18C30 10 16 0 16 0Z" fill="url(#fireGrad)"/>
+            <defs>
+              <linearGradient id="fireGrad" x1="16" y1="0" x2="16" y2="40" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#ff4da6"/>
+                <stop offset="50%" stop-color="#ff6b35"/>
+                <stop offset="100%" stop-color="#ffd84d"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="streak-info">
+          <span class="streak-count" id="streakCount">0</span>
+          <span class="streak-label">day streak</span>
+        </div>
+      </div>
+
+      <div class="stat-card xp-card">
+        <div class="xp-info">
+          <span class="xp-level">Lvl <span id="xpLevel">0</span></span>
+          <span class="xp-title" id="xpTitle">Math Rookie</span>
+          <span class="xp-total" id="xpTotal">0 XP</span>
+        </div>
+        <div class="xp-track">
+          <div class="xp-fill" id="xpFill" style="width:0%"></div>
+        </div>
+        <div class="xp-progress-text" id="xpProgress">0 / 100 XP to next level</div>
+      </div>
+
+      <div class="stat-card daily-card" id="dailyCard">
+        <div class="daily-ring-wrap">
+          <svg viewBox="0 0 48 48" class="daily-ring" aria-hidden="true">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--border, #2a3140)" stroke-width="4"/>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="url(#dailyGrad)" stroke-width="4"
+                    stroke-linecap="round" stroke-dasharray="125.66" stroke-dashoffset="125.66"
+                    id="dailyRingFill" transform="rotate(-90 24 24)"/>
+            <defs>
+              <linearGradient id="dailyGrad" x1="0" y1="0" x2="48" y2="48">
+                <stop offset="0%" stop-color="#22c55e"/>
+                <stop offset="100%" stop-color="#4cc9f0"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="daily-count" id="dailyCount">0</span>
+        </div>
+        <div class="daily-info">
+          <span class="daily-label" id="dailyLabel">Daily Goal</span>
+          <span class="daily-sub" id="dailySub">0 / 5 games</span>
+        </div>
+      </div>
+
+      <a href="{{ url_for('shop_page') }}" class="stat-card coins-card" id="coinsCard" hidden>
+        <span class="coins-icon">&#x1FA99;</span>
+        <div class="coins-info">
+          <span class="coins-amount" id="coinsAmount">0</span>
+          <span class="coins-label">coins</span>
+        </div>
+      </a>
+
+      <a href="{{ url_for('dashboard_page') }}" class="stat-card skills-card" id="skillsCard" hidden>
+        <span class="skills-icon">&#x1F4DA;</span>
+        <div class="skills-info">
+          <span class="skills-count" id="skillsCount">0</span>
+          <span class="skills-label" id="skillsLabel">skills explored</span>
+        </div>
+        <div class="skills-mini-bar">
+          <div class="skills-mini-fill" id="skillsFill" style="width:0%"></div>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="quests-section container" id="questsSection" hidden>
+  <div class="quests-header">
+    <h2 class="quests-title">Daily Quests</h2>
+    <span class="quests-badge" id="questsBadge" hidden>All Complete!</span>
+  </div>
+  <div class="quests-row" id="questsList"></div>
+</section>
+
+<section class="arcade container">
+  <div class="arcade-grid">
+
+    <a href="{{ url_for('plane') }}" class="game-card" data-mode="plane" style="--card-accent: #7a5cff; --card-glow: rgba(122,92,255,0.35);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="4" y="4" width="40" height="40" rx="4" stroke="currentColor" stroke-width="2.5" opacity="0.3"/>
+          <line x1="24" y1="4" x2="24" y2="44" stroke="currentColor" stroke-width="2" opacity="0.4"/>
+          <line x1="4" y1="24" x2="44" y2="24" stroke="currentColor" stroke-width="2" opacity="0.4"/>
+          <circle cx="32" cy="16" r="4" fill="currentColor"/>
+          <circle cx="16" cy="32" r="4" fill="currentColor" opacity="0.6"/>
+          <line x1="16" y1="32" x2="32" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Coordinate Plane</h2>
+        <p class="game-card-desc">Plot points, draw lines, and explore transformations on an interactive grid.</p>
+      </div>
+      <div class="game-card-badge">Graphing</div>
+    </a>
+
+    <a href="{{ url_for('line_mode') }}" class="game-card" data-mode="line" style="--card-accent: #36d1ff; --card-glow: rgba(54,209,255,0.35);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <polyline points="6,38 16,28 26,32 38,12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="6" cy="38" r="3" fill="currentColor" opacity="0.5"/>
+          <circle cx="16" cy="28" r="3" fill="currentColor" opacity="0.7"/>
+          <circle cx="26" cy="32" r="3" fill="currentColor" opacity="0.7"/>
+          <circle cx="38" cy="12" r="3" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Line Graph</h2>
+        <p class="game-card-desc">Build data tables, visualize trends, and calculate slope and equations.</p>
+      </div>
+      <div class="game-card-badge">Data</div>
+    </a>
+
+    <a href="{{ url_for('battleship') }}" class="game-card" data-mode="battleship" style="--card-accent: #ef4444; --card-glow: rgba(239,68,68,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="8" y="8" width="32" height="32" rx="3" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5" opacity="0.2"/>
+          <line x1="8" y1="28" x2="40" y2="28" stroke="currentColor" stroke-width="1.5" opacity="0.2"/>
+          <line x1="18" y1="8" x2="18" y2="40" stroke="currentColor" stroke-width="1.5" opacity="0.2"/>
+          <line x1="28" y1="8" x2="28" y2="40" stroke="currentColor" stroke-width="1.5" opacity="0.2"/>
+          <circle cx="23" cy="23" r="4" fill="currentColor"/>
+          <circle cx="33" cy="13" r="3" fill="currentColor" opacity="0.4"/>
+          <line x1="18" y1="34" x2="26" y2="34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Battleship</h2>
+        <p class="game-card-desc">Call coordinates to sink your opponent's fleet. Play a friend or challenge the bot.</p>
+      </div>
+      <div class="game-card-badge">Strategy</div>
+    </a>
+
+    <a href="{{ url_for('meme_wars') }}" class="game-card" data-mode="memewars" style="--card-accent: #f59e0b; --card-glow: rgba(245,158,11,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="6" y="10" width="16" height="16" rx="3" stroke="currentColor" stroke-width="2.5"/>
+          <rect x="26" y="22" width="16" height="16" rx="3" stroke="currentColor" stroke-width="2.5"/>
+          <path d="M22 18 L26 30" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" opacity="0.5"/>
+          <circle cx="14" cy="18" r="3" fill="currentColor"/>
+          <circle cx="34" cy="30" r="3" fill="currentColor" opacity="0.7"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Meme Wars</h2>
+        <p class="game-card-desc">Hunt for hidden memes on the grid. Capture them all before the other team does.</p>
+      </div>
+      <div class="game-card-badge">Teams</div>
+    </a>
+
+    <a href="{{ url_for('meme_dash') }}" class="game-card" data-mode="memedash" style="--card-accent: #22c55e; --card-glow: rgba(34,197,94,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="4" y="36" width="40" height="4" rx="2" fill="currentColor" opacity="0.25"/>
+          <rect x="10" y="28" width="14" height="4" rx="2" fill="currentColor" opacity="0.25"/>
+          <rect x="28" y="20" width="12" height="4" rx="2" fill="currentColor" opacity="0.25"/>
+          <circle cx="20" cy="22" r="5" fill="currentColor"/>
+          <path d="M20 17 L20 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M16 20 L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+          <path d="M24 20 L27 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Meme Dash</h2>
+        <p class="game-card-desc">Race, jump, and collect memes in this multiplayer platformer. Watch out for the Terminator.</p>
+      </div>
+      <div class="game-card-badge">Action</div>
+    </a>
+
+    <a href="{{ url_for('subitize_mode') }}" class="game-card" data-mode="subitize" style="--card-accent: #06b6d4; --card-glow: rgba(6,182,212,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <circle cx="14" cy="14" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" opacity="0.5"/>
+          <circle cx="34" cy="14" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" opacity="0.5"/>
+          <circle cx="14" cy="34" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" opacity="0.5"/>
+          <circle cx="34" cy="34" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" opacity="0.5"/>
+          <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+          <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
+          <circle cx="14" cy="12" r="2.5" fill="currentColor" opacity="0.7"/>
+          <circle cx="32" cy="12" r="2.5" fill="currentColor"/>
+          <circle cx="36" cy="16" r="2.5" fill="currentColor"/>
+          <circle cx="34" cy="12" r="2.5" fill="currentColor" opacity="0.7"/>
+          <circle cx="12" cy="32" r="2.5" fill="currentColor"/>
+          <circle cx="16" cy="36" r="2.5" fill="currentColor"/>
+          <circle cx="14" cy="32" r="2.5" fill="currentColor" opacity="0.7"/>
+          <circle cx="32" cy="32" r="2.5" fill="currentColor"/>
+          <circle cx="36" cy="36" r="2.5" fill="currentColor"/>
+          <circle cx="34" cy="32" r="2.5" fill="currentColor" opacity="0.7"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Subitize</h2>
+        <p class="game-card-desc">See groups of dots and figure out the total. Build number sense with visual math.</p>
+      </div>
+      <div class="game-card-badge">Number Sense</div>
+    </a>
+
+    <a href="{{ url_for('ratios_mode') }}" class="game-card" data-mode="ratios" style="--card-accent: #ff4da6; --card-glow: rgba(255,77,166,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <circle cx="16" cy="18" r="6" fill="currentColor" opacity="0.7"/>
+          <circle cx="16" cy="18" r="3" fill="currentColor"/>
+          <circle cx="32" cy="30" r="8" fill="currentColor" opacity="0.4"/>
+          <circle cx="32" cy="30" r="4" fill="currentColor" opacity="0.7"/>
+          <text x="22" y="28" font-size="14" font-weight="900" fill="currentColor" text-anchor="middle">:</text>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Ratios</h2>
+        <p class="game-card-desc">Drag and drop memes to match ratios. Part-to-part, part-to-whole, and equivalents.</p>
+      </div>
+      <div class="game-card-badge">Puzzles</div>
+    </a>
+
+    <a href="{{ url_for('shop_page') }}" class="game-card" style="--card-accent: #f59e0b; --card-glow: rgba(245,158,11,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-width="2.5" opacity="0.3"/>
+          <circle cx="24" cy="24" r="10" fill="currentColor" opacity="0.15"/>
+          <text x="24" y="30" font-size="20" fill="currentColor" text-anchor="middle" font-weight="900">$</text>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Shop</h2>
+        <p class="game-card-desc">Spend coins on custom titles, board themes, and avatar frames to show off your style.</p>
+      </div>
+      <div class="game-card-badge">Cosmetics</div>
+    </a>
+
+    <a href="{{ url_for('dashboard_page') }}" class="game-card card-dashboard" style="--card-accent: #4cc9f0; --card-glow: rgba(76,201,240,0.3);">
+      <div class="game-card-icon">
+        <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="6" y="26" width="8" height="16" rx="2" fill="currentColor" opacity="0.5"/>
+          <rect x="18" y="18" width="8" height="24" rx="2" fill="currentColor" opacity="0.7"/>
+          <rect x="30" y="10" width="8" height="32" rx="2" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="game-card-body">
+        <h2 class="game-card-title">Dashboard</h2>
+        <p class="game-card-desc">Track your scores, streaks, and achievements across every game mode.</p>
+      </div>
+      <div class="game-card-badge">Stats</div>
+    </a>
+
+  </div>
+</section>
+
+<section class="leaderboard-section container" id="leaderboardSection" hidden>
+  <div class="leaderboard-card">
+    <div class="leaderboard-header">
+      <h2 class="leaderboard-title">Leaderboard</h2>
+      <span class="leaderboard-count" id="lbCount"></span>
+    </div>
+    <div class="leaderboard-list" id="leaderboardList"></div>
+    <div class="leaderboard-me" id="leaderboardMe" hidden></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ===== Home / Arcade Lobby ===== */
+body.page-home {
+  background:
+    radial-gradient(1400px 900px at 10% -20%, rgba(122,92,255,0.22), transparent 55%),
+    radial-gradient(1200px 800px at 90% 110%, rgba(255,77,166,0.18), transparent 55%),
+    radial-gradient(800px 600px at 50% 50%, rgba(54,209,255,0.12), transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* Hero */
+.hero {
+  text-align: center;
+  padding: clamp(32px, 6vw, 64px) 0 clamp(16px, 3vw, 32px);
+}
+.hero-title {
+  font-size: clamp(32px, 7vw, 64px);
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  margin: 0;
+  background: linear-gradient(135deg, #7a5cff 0%, #ff4da6 50%, #36d1ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+}
+.hero-sub {
+  font-size: clamp(16px, 2.5vw, 22px);
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  font-weight: 500;
+}
+
+/* Arcade grid */
+.arcade { padding-bottom: 48px; }
+.arcade-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: clamp(14px, 2.5vw, 24px);
+}
+
+/* Game cards */
+.game-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  padding: clamp(18px, 2.5vw, 28px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  text-decoration: none;
+  color: var(--text);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.game-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 20%, var(--card-glow, rgba(122,92,255,0.15)), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.game-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25), 0 0 0 1px var(--card-accent, var(--accent));
+  border-color: var(--card-accent, var(--accent));
+  text-decoration: none;
+}
+.game-card:hover::before { opacity: 1; }
+
+.game-card-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card-accent, var(--accent)) 15%, transparent);
+  color: var(--card-accent, var(--accent));
+}
+.game-card-icon svg { width: 36px; height: 36px; }
+
+.game-card-body { position: relative; z-index: 1; }
+.game-card-title {
+  font-size: clamp(18px, 2.2vw, 22px);
+  font-weight: 800;
+  margin: 0 0 4px;
+  letter-spacing: 0.2px;
+}
+.game-card-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.game-card-badge {
+  justify-self: start;
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--card-accent, var(--accent)) 18%, transparent);
+  color: var(--card-accent, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--card-accent, var(--accent)) 30%, transparent);
+}
+
+/* Dashboard card spans full width on larger screens */
+@media (min-width: 700px) {
+  .card-dashboard {
+    grid-column: 1 / -1;
+    grid-template-rows: auto;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+  }
+}
+
+/* Mobile: single column, slightly less padding */
+@media (max-width: 500px) {
+  .arcade-grid { gap: 12px; }
+  .game-card { padding: 16px; }
+}
+
+/* Player Stats Row */
+.player-stats {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: clamp(10px, 2vw, 20px);
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.stat-card {
+  background: var(--surface, #151924);
+  border: 1px solid var(--border, #2a3140);
+  border-radius: var(--radius, 16px);
+  padding: 16px 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+/* Streak Card */
+.streak-card {
+  display: flex; align-items: center; gap: 12px;
+  min-width: 140px;
+}
+.streak-fire { width: 40px; height: 50px; flex-shrink: 0; }
+.fire-svg { width: 100%; height: 100%; }
+.streak-card.active .fire-svg {
+  animation: fireFlicker 1.2s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 8px rgba(255,77,166,0.5));
+}
+.streak-card:not(.active) .fire-svg { opacity: 0.3; filter: grayscale(0.6); }
+@keyframes fireFlicker {
+  0% { transform: scale(1) rotate(-2deg); }
+  50% { transform: scale(1.08) rotate(1deg); }
+  100% { transform: scale(1.02) rotate(-1deg); }
+}
+.streak-info { display: flex; flex-direction: column; }
+.streak-count { font-size: 28px; font-weight: 900; color: var(--text, #e9eef6); line-height: 1; }
+.streak-label { font-size: 12px; font-weight: 600; color: var(--text-muted, #a7b4c8); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* XP Card */
+.xp-card { flex: 1; min-width: 200px; max-width: 380px; }
+.xp-info {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.xp-level { font-size: 18px; font-weight: 900; color: var(--accent, #4cc9f0); }
+.xp-title {
+  font-size: 12px; font-weight: 700; color: var(--text-muted);
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px;
+}
+.xp-total { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-left: auto; }
+.xp-track {
+  width: 100%; height: 8px; background: var(--surface-2, #1c2230);
+  border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+}
+.xp-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #7a5cff, #ff4da6, #36d1ff);
+  background-size: 200% 100%;
+  transition: width 0.6s ease;
+  animation: xpShimmer 3s linear infinite;
+}
+@keyframes xpShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.xp-progress-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* Daily Goal Card */
+.daily-card {
+  display: flex; align-items: center; gap: 12px; min-width: 140px;
+}
+.daily-ring-wrap { position: relative; width: 48px; height: 48px; flex-shrink: 0; }
+.daily-ring { width: 100%; height: 100%; }
+.daily-ring circle:last-of-type { transition: stroke-dashoffset 0.8s ease; }
+.daily-count {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 14px; font-weight: 900; color: var(--text);
+}
+.daily-info { display: flex; flex-direction: column; }
+.daily-label { font-size: 13px; font-weight: 800; color: var(--text); }
+.daily-sub { font-size: 11px; color: var(--text-muted); }
+.daily-card.complete .daily-label { color: #22c55e; }
+.daily-card.complete .daily-count { color: #22c55e; }
+
+/* Coins Card */
+.coins-card {
+  display: flex; align-items: center; gap: 10px; min-width: 100px;
+  text-decoration: none; color: var(--text);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.coins-card:hover {
+  border-color: #f59e0b;
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+.coins-icon { font-size: 28px; flex-shrink: 0; }
+.coins-info { display: flex; flex-direction: column; }
+.coins-amount { font-size: 22px; font-weight: 900; color: #f59e0b; line-height: 1; }
+.coins-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Skills Card */
+.skills-card {
+  display: flex; align-items: center; gap: 10px; min-width: 120px;
+  text-decoration: none; color: var(--text); flex-wrap: wrap;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.skills-card:hover {
+  border-color: #818cf8;
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+.skills-icon { font-size: 24px; flex-shrink: 0; }
+.skills-info { display: flex; flex-direction: column; }
+.skills-count { font-size: 18px; font-weight: 900; color: #818cf8; line-height: 1; }
+.skills-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.skills-mini-bar { width: 100%; height: 4px; background: var(--surface-2, #1e2536); border-radius: 999px; overflow: hidden; }
+.skills-mini-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #818cf8, #22c55e); transition: width 0.5s ease; }
+
+/* Stats strip on cards */
+.game-card-stats {
+  position: relative; z-index: 1;
+  display: flex; gap: 12px; flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.game-card-stats .stat {
+  font-size: 12px; color: var(--text-muted); font-weight: 600;
+}
+.game-card-stats .stat-val {
+  color: var(--card-accent, var(--accent)); font-weight: 800;
+}
+
+/* Daily Quests */
+.quests-section { padding-bottom: 8px; }
+.quests-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+}
+.quests-title {
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 900; margin: 0;
+  color: var(--text);
+}
+.quests-badge {
+  font-size: 12px; font-weight: 800;
+  color: #22c55e; background: rgba(34,197,94,0.12);
+  border: 1px solid rgba(34,197,94,0.3);
+  padding: 3px 12px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.quests-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: clamp(10px, 2vw, 16px);
+}
+
+.quest-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 16px);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.quest-card.completed {
+  border-color: rgba(34,197,94,0.4);
+  background: color-mix(in srgb, #22c55e 6%, var(--surface));
+}
+.quest-icon { font-size: 24px; flex-shrink: 0; }
+.quest-body { flex: 1; min-width: 0; }
+.quest-label {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  margin-bottom: 6px;
+}
+.quest-card.completed .quest-label { color: #22c55e; }
+.quest-bar {
+  height: 6px; background: var(--surface-2, #1c2230);
+  border-radius: 999px; overflow: hidden;
+}
+.quest-bar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #7a5cff, #4cc9f0);
+  transition: width 0.5s ease;
+}
+.quest-card.completed .quest-bar-fill {
+  background: linear-gradient(90deg, #22c55e, #4cc9f0);
+}
+.quest-progress {
+  font-size: 11px; color: var(--text-muted); margin-top: 3px; font-weight: 600;
+}
+.quest-check {
+  font-size: 20px; flex-shrink: 0; opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.quest-card.completed .quest-check { opacity: 1; }
+
+/* Leaderboard */
+.leaderboard-section { padding-bottom: 48px; }
+.leaderboard-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 20px);
+  padding: clamp(18px, 2.5vw, 28px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.leaderboard-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.leaderboard-title {
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 900; margin: 0;
+}
+.leaderboard-count {
+  font-size: 13px; color: var(--text-muted); font-weight: 600;
+}
+.leaderboard-list { display: grid; gap: 2px; }
+
+.lb-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm, 12px);
+  transition: background 0.15s ease;
+}
+.lb-row:hover { background: var(--surface-2, #1c2230); }
+.lb-row.is-me {
+  background: color-mix(in srgb, var(--accent, #4cc9f0) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.lb-rank {
+  font-size: 18px; font-weight: 900; text-align: center; color: var(--text-muted);
+}
+.lb-row:nth-child(1) .lb-rank { color: #ffd700; font-size: 22px; }
+.lb-row:nth-child(2) .lb-rank { color: #c0c0c0; font-size: 20px; }
+.lb-row:nth-child(3) .lb-rank { color: #cd7f32; font-size: 20px; }
+.lb-name-wrap { display: flex; flex-direction: column; min-width: 0; }
+.lb-name {
+  font-weight: 800; font-size: 15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lb-title-tag { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.lb-level {
+  font-size: 13px; font-weight: 700;
+  color: var(--accent, #4cc9f0);
+  padding: 2px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #4cc9f0) 12%, transparent);
+  white-space: nowrap;
+}
+.lb-xp { font-size: 14px; font-weight: 800; color: var(--text); white-space: nowrap; }
+
+.lb-streak { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.lb-streak.active { color: #ff4da6; }
+
+.leaderboard-me {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--text-muted); font-weight: 600; text-align: center;
+}
+
+@media (max-width: 500px) {
+  .lb-row { grid-template-columns: 36px 1fr auto; gap: 8px; padding: 8px 10px; }
+  .lb-level { display: none; }
+}
+
+/* Subtle entrance animation */
+@media (prefers-reduced-motion: no-preference) {
+  .game-card {
+    animation: cardIn 0.4s ease both;
+  }
+  .game-card:nth-child(1) { animation-delay: 0s; }
+  .game-card:nth-child(2) { animation-delay: 0.05s; }
+  .game-card:nth-child(3) { animation-delay: 0.1s; }
+  .game-card:nth-child(4) { animation-delay: 0.15s; }
+  .game-card:nth-child(5) { animation-delay: 0.2s; }
+  .game-card:nth-child(6) { animation-delay: 0.25s; }
+  .game-card:nth-child(7) { animation-delay: 0.3s; }
+  .game-card:nth-child(8) { animation-delay: 0.35s; }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+</style>
+<script>
+// Fetch and display per-mode stats + XP on home page
+(function(){
+  async function loadStats(){
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const r = await fetch('/api/dashboard', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+
+      // Per-mode stats on cards
+      const perMode = data.per_mode || {};
+      document.querySelectorAll('.game-card[data-mode]').forEach(card => {
+        const mode = card.dataset.mode;
+        const stats = perMode[mode];
+        if (!stats || !stats.total_games) return;
+        // Remove any existing stats strip (avoid duplicates on re-auth)
+        const existing = card.querySelector('.game-card-stats');
+        if (existing) existing.remove();
+        const strip = document.createElement('div');
+        strip.className = 'game-card-stats';
+        const total = stats.total_games || 0;
+        const best = stats.best_score;
+        const bestStr = (best !== null && best !== undefined) ? Math.round(best * 100) / 100 : null;
+        strip.innerHTML =
+          `<span class="stat">Played <span class="stat-val">${total}</span></span>` +
+          (bestStr !== null ? `<span class="stat">Best <span class="stat-val">${bestStr}</span></span>` : '') +
+          (stats.wins_or_completed ? `<span class="stat">Wins <span class="stat-val">${stats.wins_or_completed}</span></span>` : '');
+        card.appendChild(strip);
+      });
+
+      // Show player stats container
+      const statsEl = document.getElementById('playerStats');
+      if (statsEl) statsEl.hidden = false;
+
+      // XP card
+      const xp = data.xp;
+      if (xp) {
+        document.getElementById('xpLevel').textContent = xp.level;
+        document.getElementById('xpTitle').textContent = xp.title;
+        document.getElementById('xpTotal').textContent = xp.total_xp.toLocaleString() + ' XP';
+        const pct = xp.xp_needed > 0 ? Math.min(100, Math.round(xp.xp_in_level / xp.xp_needed * 100)) : 100;
+        document.getElementById('xpFill').style.width = pct + '%';
+        document.getElementById('xpProgress').textContent =
+          xp.xp_in_level + ' / ' + xp.xp_needed + ' XP to next level';
+      }
+
+      // Coins card
+      if (data.coins !== undefined) {
+        const coinsCard = document.getElementById('coinsCard');
+        const coinsAmount = document.getElementById('coinsAmount');
+        if (coinsCard && coinsAmount) {
+          coinsAmount.textContent = data.coins.toLocaleString();
+          coinsCard.hidden = false;
+        }
+      }
+
+      // Skills card
+      if (data.standards && data.standards.length) {
+        const skillsCard = document.getElementById('skillsCard');
+        const skillsCount = document.getElementById('skillsCount');
+        const skillsLabel = document.getElementById('skillsLabel');
+        const skillsFill = document.getElementById('skillsFill');
+        if (skillsCard) {
+          const attempted = data.standards.filter(function(s){ return s.attempted; }).length;
+          const total = data.standards.length;
+          skillsCount.textContent = attempted + ' / ' + total;
+          skillsLabel.textContent = attempted === 1 ? 'skill explored' : 'skills explored';
+          skillsFill.style.width = Math.round(attempted / total * 100) + '%';
+          skillsCard.hidden = false;
+        }
+      }
+
+      // Streak card
+      const streak = data.streak;
+      if (streak) {
+        document.getElementById('streakCount').textContent = streak.streak;
+        const streakCard = document.getElementById('streakCard');
+        if (streak.streak > 0) {
+          streakCard.classList.add('active');
+        } else {
+          streakCard.classList.remove('active');
+        }
+        // Update label based on state
+        const label = streakCard.querySelector('.streak-label');
+        if (streak.streak === 0) {
+          label.textContent = 'Start a streak!';
+        } else if (!streak.played_today) {
+          label.textContent = 'Play today to keep it!';
+        } else {
+          label.textContent = streak.streak === 1 ? 'day streak' : 'day streak';
+        }
+      }
+
+      // Daily quests
+      const questData = data.quests;
+      if (questData && questData.quests && questData.quests.length) {
+        const qSection = document.getElementById('questsSection');
+        const qList = document.getElementById('questsList');
+        const qBadge = document.getElementById('questsBadge');
+        qSection.hidden = false;
+        if (questData.all_completed) qBadge.hidden = false;
+
+        qList.innerHTML = questData.quests.map(function(q){
+          const pct = Math.round(q.progress * 100);
+          const cls = q.completed ? ' completed' : '';
+          return '<div class="quest-card' + cls + '">' +
+            '<span class="quest-icon">' + q.icon + '</span>' +
+            '<div class="quest-body">' +
+              '<div class="quest-label">' + q.label + '</div>' +
+              '<div class="quest-bar"><div class="quest-bar-fill" style="width:' + pct + '%"></div></div>' +
+              '<div class="quest-progress">' + q.current + ' / ' + q.target + '</div>' +
+            '</div>' +
+            '<span class="quest-check">\u2705</span>' +
+          '</div>';
+        }).join('');
+      }
+
+      // Daily goal card
+      if (streak) {
+        const count = streak.games_today;
+        const goal = streak.daily_goal;
+        document.getElementById('dailyCount').textContent = count;
+        document.getElementById('dailySub').textContent = count + ' / ' + goal + ' games';
+        const dailyCard = document.getElementById('dailyCard');
+        // Ring progress
+        const circumference = 2 * Math.PI * 20; // r=20
+        const progress = Math.min(1, count / goal);
+        const offset = circumference * (1 - progress);
+        document.getElementById('dailyRingFill').style.strokeDashoffset = offset;
+        if (streak.daily_goal_met) {
+          dailyCard.classList.add('complete');
+          document.getElementById('dailyLabel').textContent = 'Goal Complete!';
+        } else {
+          dailyCard.classList.remove('complete');
+          document.getElementById('dailyLabel').textContent = 'Daily Goal';
+        }
+      }
+    } catch(e) { /* silent */ }
+  }
+
+  async function loadLeaderboard(){
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const r = await fetch('/api/leaderboard?limit=10', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const section = document.getElementById('leaderboardSection');
+      const list = document.getElementById('leaderboardList');
+      const countEl = document.getElementById('lbCount');
+      if (!data.leaderboard || !data.leaderboard.length) return;
+
+      section.hidden = false;
+      countEl.textContent = data.total_players + ' player' + (data.total_players !== 1 ? 's' : '');
+
+      const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}']; // gold silver bronze
+      const myUid = data.my_rank ? data.my_rank.user_id : null;
+      function escapeHtml(s){
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      list.innerHTML = data.leaderboard.map(function(e){
+        const isMe = e.user_id === myUid;
+        const medal = e.rank <= 3 ? medals[e.rank - 1] : e.rank;
+        const streakHtml = e.streak > 0
+          ? '<span class="lb-streak active">\u{1F525} ' + (e.streak | 0) + 'd</span>'
+          : '';
+        // Avatar frame styling — only allow safe color strings (hex or rgb/rgba)
+        var frameStyle = '';
+        if (e.frame) {
+          const safeColor = function(c){
+            if (typeof c !== 'string') return 'transparent';
+            return /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|transparent)$/.test(c) ? c : 'transparent';
+          };
+          frameStyle = ' style="border-left: 3px solid ' + safeColor(e.frame.border_color) + ';';
+          if (e.frame.glow) frameStyle += ' box-shadow: inset 3px 0 8px ' + safeColor(e.frame.glow) + ';';
+          frameStyle += '"';
+        }
+        return '<div class="lb-row' + (isMe ? ' is-me' : '') + '"' + frameStyle + '>' +
+          '<span class="lb-rank">' + escapeHtml(medal) + '</span>' +
+          '<div class="lb-name-wrap">' +
+            '<span class="lb-name">' + escapeHtml(e.display_name) + (isMe ? ' (you)' : '') + '</span>' +
+            '<span class="lb-title-tag">' + escapeHtml(e.title) + '</span>' +
+          '</div>' +
+          '<span class="lb-level">Lvl ' + (e.level | 0) + '</span>' +
+          '<span class="lb-xp">' + (Number(e.total_xp) || 0).toLocaleString() + ' XP ' + streakHtml + '</span>' +
+        '</div>';
+      }).join('');
+
+      // Show user's position if they're not in top 10
+      const meDiv = document.getElementById('leaderboardMe');
+      if (data.my_rank && data.my_rank.rank > 10) {
+        meDiv.hidden = false;
+        meDiv.textContent = 'You are #' + data.my_rank.rank + ' of ' + data.total_players;
+      }
+    } catch(e) { /* silent */ }
+  }
+
+  function loadAll(){ loadStats(); loadLeaderboard(); }
+  document.addEventListener('DOMContentLoaded', loadAll);
+  document.addEventListener('app:auth', loadAll);
+})();
+</script>
+{% endblock %}

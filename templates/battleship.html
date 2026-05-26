@@ -1,204 +1,73 @@
 {% extends "base.html" %}
 {% block title %}Battleship Mode{% endblock %}
+{% block body_class %}mode-game mode-battleship{% endblock %}
 {% block extra_head %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-  <style>
-    /* Battleship-specific styles kept local to avoid impacting other modes */
-    html, body { height: 100%; }
-    body { display: grid; grid-template-rows: auto 1fr; }
-
-    .battleship-wrap { display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
-    .bs-sidebar { border-right: 1px solid #e0e0e0; padding: 12px; background: #fcfcfc; overflow: auto; }
-    .bs-main { display: grid; grid-template-rows: auto 1fr; gap: 12px; padding: 12px; overflow: auto; }
-
-    .lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
-    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px; }
-    .team-card header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .team-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
-    .team-a .team-badge { color: #1565c0; }
-    .team-b .team-badge { color: #2e7d32; }
-    .team-list { font-size: 14px; color: #555; min-height: 22px; }
-    .flex-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-
-    .grids { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
-    .grid-card header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
-
-    /* Make boards responsive and large by default */
-    .board { --cell: clamp(32px, 7.2vmin, 64px); display: grid; grid-template-columns: 22px repeat(10, var(--cell)); grid-auto-rows: var(--cell); border: 1px solid #ddd; border-radius: 8px; overflow: clip; background: #fff; user-select: none; position: relative; }
-    .board .lbl { display: grid; place-items: center; font-size: 12px; color: #666; background: #fafafa; border-right: 1px solid #eee; }
-    .board .tl { border-bottom: 1px solid #eee; }
-    /* Bottom axis labels separator */
-    .board .lbl.bottom { border-top: 1px solid #eee; }
-    .board .bl { border-top: 1px solid #eee; }
-    /* Absolute axis labels for clarity */
-    .board .axis { position: absolute; font-size: 12px; color: #666; pointer-events: none; }
-    .board .axis.x { right: 4px; bottom: 2px; }
-    .board .axis.y { left: 4px; top: 2px; }
-    .board .cell { position: relative; border-left: 1px solid #eee; border-top: 1px solid #eee; cursor: pointer; }
-    .board .cell:hover { background: #f7fbff; }
-    #enemyBoard .cell { cursor: default; }
-    .cell.ship { background: #e3f2fd; }
-    .cell.hit { background: #ffebee; }
-    .cell.miss { background: #efefef; }
-    .cell .ping { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cell) * 0.85); line-height: 1; animation: pop 300ms ease-out; pointer-events: none; }
-    @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-    /* Status & pills */
-    .status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed #e0e0e0; border-radius: 8px; background: #fff; }
-    .status .pill { padding: 4px 8px; border-radius: 999px; background: #f5f5f5; font-size: 12px; }
-    #turnPill.your-turn { background: #e3f2fd; color: #1565c0; font-weight: 700; }
-    #turnPill.waiting { background: #fff3e0; color: #e65100; }
-
-    /* Smaller roster in sidebar */
-    .bs-sidebar .lobby { grid-template-columns: 1fr; }
-    .bs-sidebar .team-card { padding: 8px; }
-    .bs-sidebar .team-card .team-list { font-size: 12px; color: #666; }
-
-    .fire-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
-    .fire-controls label { font-size: 12px; color: #444; display: inline-flex; align-items: center; gap: 4px; }
-    .fire-controls input { width: 54px; padding: 4px 6px; }
-    .fire-controls button { padding: 6px 10px; }
-
-    /* Tabs */
-    .tabs { display: flex; gap: 8px; align-items: flex-end; border-bottom: 1px solid #e0e0e0; padding: 0 4px; }
-    .tab { appearance: none; border: none; background: transparent; padding: 10px 14px; font-weight: 800; letter-spacing: 0.4px; cursor: pointer; border-bottom: 3px solid transparent; color: #555; }
-    .tab:hover { color: #111; }
-    .tab[aria-selected="true"] { color: #1565c0; border-color: #1565c0; }
-    .tabpanels { height: 100%; }
-    .tabpanel { display: none; height: 100%; }
-    .tabpanel.active { display: block; }
-
-    /* Make card fill panel and board fill card */
-    .grid-card { display: flex; flex-direction: column; height: 100%; }
-    .grid-card .board-wrap { flex: 1; display: grid; place-items: center; padding: 8px; }
-
-    .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 2000; background: rgba(0,0,0,0.6); }
-    .overlay.show { display: flex; }
-    .overlay .panel { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e0e0e0; width: min(92vw, 520px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
-    .winner { background: radial-gradient(ellipse at top, #fff7e6, #ffffff 60%); }
-
-    .countdown { font-size: 28px; font-weight: 800; letter-spacing: 2px; }
-
-    /* Countdown popup specifics */
-    #countdownOverlay .panel { background: radial-gradient(ellipse at top, #ffffff, #fff8f0 60%); }
-    #countdownBigNum { font-size: clamp(64px, 18vmin, 260px); font-weight: 900; line-height: 1; margin: 0; letter-spacing: 2px; color: #111; }
-    #countdownTurnText { font-size: clamp(28px, 6vmin, 64px); margin: 6px 0 0; letter-spacing: 1px; }
-
-    /* Mobile adjustments */
-    @media (max-width: 800px) {
-      .battleship-wrap { grid-template-columns: 1fr; }
-      .bs-sidebar { border-right: none; border-bottom: 1px solid #e0e0e0; }
-    }
-
-    /* Turn overlay and attention cues */
-    #turnOverlay .panel { background: #fff; }
-    .turn-title { font-size: 40px; margin: 0 0 6px; letter-spacing: 1px; }
-    .turn-sub { color: #555; margin: 0; }
-
-    /* Subtle but visible screen-edge glow while it's your turn */
-    body.your-turn-active::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      box-shadow:
-        0 0 0 5px rgba(21,101,192,0.50) inset,
-        0 0 60px rgba(255,213,79,0.35) inset;
-      animation: glowPulse 1.6s ease-in-out infinite;
-      z-index: 500;
-    }
-    @keyframes glowPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-
-    /* Extra emphasis on actionable controls at turn start */
-    #fireBtn.turn-pulse {
-      animation: btnPulse 900ms ease-in-out 0s 2;
-      outline: 2px solid #ffd54f;
-      box-shadow: 0 0 0 4px rgba(255,213,79,0.25);
-    }
-    @keyframes btnPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-
-    .board.can-fire { outline: 2px solid #ffd54f; box-shadow: 0 0 0 3px rgba(255,213,79,0.25) inset; }
-    .board.turn-pulse { animation: boardPulse 900ms ease-in-out 0s 2; }
-    @keyframes boardPulse {
-      0%, 100% { box-shadow: 0 0 0 3px rgba(255,213,79,0.25) inset; }
-      50% { box-shadow: 0 0 0 6px rgba(255,213,79,0.45) inset; }
-    }
-
-    /* Persistent turn banner above the game board */
-    .turn-banner { 
-      display: block; 
-      padding: 10px 12px; 
-      border-radius: 10px; 
-      font-weight: 800; 
-      letter-spacing: 0.4px; 
-      text-align: center; 
-      background: #f5f5f5; 
-      color: #444; 
-      border: 1px solid #e0e0e0; 
-    }
-    .turn-banner.is-you { background: #e3f2fd; color: #0d47a1; border-color: #bbdefb; }
-    .turn-banner.is-opponent { background: #fff3e0; color: #e65100; border-color: #ffe0b2; }
-    .turn-banner.is-spectator { background: #f1f8e9; color: #2e7d32; border-color: #c5e1a5; }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}" />
 {% endblock %}
 
 {% block content %}
 <header class="app-header full-bleed" role="banner">
   <nav class="toolbar panels" aria-label="Battleship controls">
-    <details class="panel panel-sm" style="margin-left:auto;">
-      <summary>Session</summary>
-      <div class="group" role="group" aria-label="Collaboration status">
-        <span id="presence" title="Number of users currently online in this room">• Offline</span>
-        <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
-        <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
-      </div>
-    </details>
-
-
     <div class="panel" id="lobbyPanel">
       <div class="group" role="group" aria-label="Lobby">
-        <span class="pill">Teams are auto-assigned: creator is Team A, next joiner is Team B. Others spectate.</span>
-        <button id="startBtn" type="button" disabled>Start Game</button>
+        <button id="joinA" class="btn-3d team-a" type="button">Join Team A</button>
+        <span id="countA" class="pill" aria-live="polite">0 players</span>
+        <span id="teamAList" class="pill team-roster" aria-live="polite">No one yet.</span>
+        <button id="joinB" class="btn-3d team-b" type="button">Join Team B</button>
+        <span id="countB" class="pill" aria-live="polite">0 players</span>
+        <span id="teamBList" class="pill team-roster" aria-live="polite">No one yet.</span>
+        <button id="startBtn" class="btn-3d" type="button" disabled>Start Game</button>
         <label class="pill" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
-          <input id="singlePlayerToggle" type="checkbox" /> Single Player (vs Bot)
+          <input id="singlePlayerToggle" type="checkbox" /> Solo (vs Bot)
+        </label>
+        <label class="pill" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+          <input id="noobMode" type="checkbox" /> Click to Fire
         </label>
         <span id="phaseText" class="pill"></span>
       </div>
     </div>
+
+    <details class="panel panel-sm" style="margin-left:auto;">
+      <summary>
+        <span id="presence" title="Users online">• Offline</span>
+      </summary>
+      <div class="group" role="group" aria-label="Session">
+        <button id="shareSessionBtn" class="btn-light" type="button">Share</button>
+        <button id="joinSessionBtn" class="btn-light" type="button">Join</button>
+      </div>
+    </details>
   </nav>
 </header>
 
-<main class="battleship-wrap full-bleed" role="main">
-  <aside class="bs-sidebar" aria-label="Stats">
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Battle Dashboard</h3>
-      <div class="status">
+<main class="game-layout full-bleed" role="main">
+  <aside class="game-sidebar" aria-label="Battle dashboard">
+    <div class="game-card dash-card">
+      <div class="dash-pills">
         <span class="pill" id="roomPin">PIN: —</span>
-        <span class="pill" id="turnPill">Turn: —</span>
-        <span class="pill" id="youAre">You: Spectator</span>
-        <span class="pill" id="countdownPill" hidden>Starting in <strong id="countdownNum">3</strong>…</span>
+        <span class="pill" id="youAre">Spectator</span>
       </div>
+      <div id="turnPill" class="turn-indicator">Waiting to start</div>
+      <span class="pill" id="countdownPill" hidden>Starting in <strong id="countdownNum">3</strong>…</span>
     </div>
 
-    <div class="card" style="margin-top:10px;">
-      <header class="flex-row" style="justify-content:space-between;">
-        <strong>My Stats</strong>
+    <div class="game-card stat-card">
+      <div class="stat-header">
+        <strong>Your Stats</strong>
         <span id="yourTeamBadge" class="team-badge"></span>
-      </header>
-      <ul id="statsYou" style="list-style:none; padding-left:0; margin:6px 0 0; font-size:14px; color:#333;"></ul>
+      </div>
+      <ul id="statsYou" class="stat-list"></ul>
     </div>
 
-    <div class="card" style="margin-top:10px;">
-      <header class="flex-row" style="justify-content:space-between;">
+    <div class="game-card stat-card">
+      <div class="stat-header">
         <strong>Enemy Stats</strong>
         <span id="enemyTeamBadge" class="team-badge"></span>
-      </header>
-      <ul id="statsEnemy" style="list-style:none; padding-left:0; margin:6px 0 0; font-size:14px; color:#333;"></ul>
+      </div>
+      <ul id="statsEnemy" class="stat-list"></ul>
     </div>
   </aside>
 
-  <section class="bs-main">
-
+  <section class="game-main">
     <div id="turnBanner" class="turn-banner" role="status" aria-live="polite">—</div>
 
     <div class="tabs" role="tablist" aria-label="Battleship board tabs">
@@ -208,20 +77,21 @@
 
     <div class="tabpanels">
       <div id="tab-enemy" class="tabpanel active" role="tabpanel" aria-labelledby="tabBtnEnemy" tabindex="0">
-        <div class="card grid-card" style="height:100%;">
-          <header>
-            <strong>Enemy Waters</strong>
-            <small class="hint">Enter coordinates and press Fire when it’s your team’s turn.</small>
-          </header>
-          <div class="fire-controls" role="group" aria-label="Fire controls">
-            <label for="shotCol">X (1–10)
-              <input id="shotCol" type="number" min="1" max="10" placeholder="1" aria-label="X value (1–10)" />
-            </label>
-            <label for="shotRow">Y (1–10)
-              <input id="shotRow" type="number" min="1" max="10" placeholder="1" aria-label="Y value (1–10)" />
-            </label>
-            <button id="fireBtn" type="button">Fire</button>
-            <small id="fireMsg" class="hint" style="min-width:160px;"></small>
+        <div class="grid-card">
+          <div class="fire-section">
+            <div class="fire-controls" role="group" aria-label="Fire controls">
+              <div class="fire-input-group">
+                <label for="shotCol" class="fire-label">X</label>
+                <input id="shotCol" type="number" min="1" max="10" placeholder="—" aria-label="X coordinate (1–10)" />
+              </div>
+              <div class="fire-input-group">
+                <label for="shotRow" class="fire-label">Y</label>
+                <input id="shotRow" type="number" min="1" max="10" placeholder="—" aria-label="Y coordinate (1–10)" />
+              </div>
+              <button id="fireBtn" type="button" class="fire-btn">FIRE</button>
+            </div>
+            <small id="fireMsg" class="fire-msg hint"></small>
+            <small class="fire-hint hint">Click a cell or type coordinates</small>
           </div>
           <div class="board-wrap">
             <div id="enemyBoard" class="board" aria-label="Enemy board"></div>
@@ -230,11 +100,7 @@
       </div>
 
       <div id="tab-your" class="tabpanel" role="tabpanel" aria-labelledby="tabBtnYour" tabindex="0">
-        <div class="card grid-card" style="height:100%;">
-          <header>
-            <strong>Your Fleet</strong>
-            <small class="hint">You can’t click yourself. That’s just meditation.</small>
-          </header>
+        <div class="grid-card">
           <div class="board-wrap">
             <div id="yourBoard" class="board" aria-label="Your board"></div>
           </div>
@@ -244,7 +110,7 @@
   </section>
 </main>
 
-<!-- Countdown overlay: 3 → 2 → 1 then turn text -->
+<!-- Countdown overlay -->
 <div id="countdownOverlay" class="overlay" aria-live="assertive" aria-hidden="true">
   <div class="panel">
     <div id="countdownBigNum">3</div>
@@ -252,49 +118,37 @@
   </div>
 </div>
 
-<!-- Turn indicator overlay (flashes for 1s at start of your turn) -->
+<!-- Turn indicator overlay -->
 <div id="turnOverlay" class="overlay" aria-live="polite" aria-hidden="true">
   <div class="panel">
     <h2 class="turn-title">YOUR TURN</h2>
-    <p class="turn-sub" id="turnSubText">Enter coordinates and press Fire</p>
+    <p class="turn-sub" id="turnSubText">Click a cell or enter coordinates and press Fire</p>
   </div>
 </div>
 
-<!-- Winner / Loser overlays -->
-<div id="winnerOverlay" class="overlay">
-  <div class="panel winner">
-    <h2 id="winnerText">Team X Wins!</h2>
-    <p>Confetti not included, but feel free to wave your hands wildly. 🎉</p>
-    <button id="playAgainBtn" type="button">Play Again</button>
+<!-- Winner overlay — EPIC -->
+<div id="winnerOverlay" class="overlay win-overlay">
+  <div id="winConfetti" class="win-confetti-layer" aria-hidden="true"></div>
+  <div class="panel winner win-panel">
+    <div class="win-trophy" aria-hidden="true">&#x1F3C6;</div>
+    <h2 id="winnerText" class="win-title">YOU WIN!!!!</h2>
+    <p id="winnerSub" class="win-sub">Absolutely legendary.</p>
+    <button id="playAgainBtn" class="btn-3d win-btn" type="button">Play Again</button>
   </div>
 </div>
 
-<div id="loserOverlay" class="overlay">
-  <div class="panel">
-    <h2>Game Over</h2>
-    <p>It’s not you. It’s your aim. Fade to black… 🥲</p>
-    <button id="okLoserBtn" type="button">Womp womp</button>
+<!-- Loser overlay — DRAMATIC -->
+<div id="loserOverlay" class="overlay lose-overlay">
+  <div id="loseRain" class="lose-rain-layer" aria-hidden="true"></div>
+  <div class="panel loser lose-panel">
+    <div class="lose-emoji" aria-hidden="true">&#x1F480;</div>
+    <h2 id="loserText" class="lose-title">YOU LOST!</h2>
+    <p id="loserSub" class="lose-sub">It's not you. It's your aim.</p>
+    <button id="okLoserBtn" class="btn-3d ghost lose-btn" type="button">Womp womp</button>
   </div>
 </div>
 
-<!-- Share QR modal -->
-<div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
-  <div class="modal-backdrop" data-close="1"></div>
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>Share session</h3>
-      <button id="closeQrModal" type="button" aria-label="Close">×</button>
-    </div>
-    <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
-      <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
-      <div style="min-width:260px; max-width:520px;">
-        <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
-        <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
-        <input id="qrLinkText" type="text" readonly style="width:100%;" />
-      </div>
-    </div>
-  </div>
-</div>
+{% include '_qr_modal.html' %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -333,4 +187,3 @@
   })();
 </script>
 {% endblock %}
-

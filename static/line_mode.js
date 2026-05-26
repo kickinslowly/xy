@@ -166,6 +166,7 @@
         updateChart();
         updateMathInfoLineMode();
         updateSelectAllBtnLabel();
+        if (typeof updateEmptyHint === 'function') updateEmptyHint();
         return true;
       }
     } catch (e) {
@@ -196,25 +197,24 @@
     card.dataset.id = id;
 
     card.innerHTML = `
-      <header>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <strong>Series</strong>
-          <label>Label: <input type="text" class="series-label" value="${id}" aria-label="Series label"></label>
-          <label>Color: <input type="color" class="series-color" value="#1e88e5" aria-label="Series line color"></label>
-          <label>Thickness: <input type="number" class="series-width" min="1" max="10" step="1" value="2" aria-label="Series line thickness" style="width: 6ch;"></label>
+      <header class="series-header">
+        <div class="series-meta">
+          <label class="series-field"><span class="series-field-label">Label</span> <input type="text" class="series-label" value="${id}" aria-label="Series label"></label>
+          <label class="series-field"><span class="series-field-label">Color</span> <input type="color" class="series-color" value="#1e88e5" aria-label="Series line color"></label>
+          <label class="series-field"><span class="series-field-label">Width</span> <input type="number" class="series-width" min="1" max="10" step="1" value="2" aria-label="Series line thickness"></label>
         </div>
-        <div>
-          <button type="button" class="add-row">+ Row</button>
-          <button type="button" class="remove-series" title="Remove Series">Remove Series</button>
+        <div class="series-actions">
+          <button type="button" class="add-row btn-3d btn-sm">+ Row</button>
+          <button type="button" class="remove-series btn-light btn-sm" title="Remove Series">Remove</button>
         </div>
       </header>
       <table aria-label="Data table for ${id}">
         <thead>
           <tr>
-            <th style="width:10%">Select</th>
-            <th style="width:30%"><span class="th-x-label">X</span></th>
-            <th style="width:30%"><span class="th-y-label">Y</span></th>
-            <th class="row-actions" style="width:30%">Action</th>
+            <th class="th-row-num">#</th>
+            <th><span class="th-x-label">X</span></th>
+            <th><span class="th-y-label">Y</span></th>
+            <th class="th-row-action"></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -236,17 +236,26 @@
       const tr = document.createElement('tr');
       const rowId = `R${rowIdSeq++}`;
       tr.setAttribute('data-row-id', rowId);
+      const rowNum = tbody.children.length + 1;
       tr.innerHTML = `
-        <td class="row-select"><label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="select-point"> Select</label></td>
+        <td class="row-num"><input type="checkbox" class="select-point" aria-label="Select row ${rowNum}" /><span class="row-num-label">${rowNum}</span></td>
         <td><input type="number" step="any" class="cell-x" value="${x}" aria-label="X value"></td>
         <td><input type="number" step="any" class="cell-y" value="${y}" aria-label="Y value"></td>
-        <td class="row-actions"><button type="button" class="del-row">Delete</button></td>
+        <td class="row-del"><button type="button" class="del-row" aria-label="Delete row ${rowNum}" title="Delete row">&times;</button></td>
       `;
       tbody.appendChild(tr);
     }
 
+    function renumberRows() {
+      const rows = Array.from(tbody.children);
+      rows.forEach((tr, i) => {
+        const lbl = tr.querySelector('.row-num-label');
+        if (lbl) lbl.textContent = i + 1;
+      });
+    }
 
-    addRowBtn.addEventListener('click', () => { addRow('', ''); updateChart(); });
+
+    addRowBtn.addEventListener('click', () => { addRow('', ''); updateChart(); updateEmptyHint(); });
     card.addEventListener('input', (e) => {
       const t = e.target;
       if (t.classList.contains('cell-x') || t.classList.contains('cell-y') || t.classList.contains('series-label') || t.classList.contains('series-color') || t.classList.contains('series-width')) {
@@ -265,6 +274,7 @@
         pushUndo({ type: 'row-delete', tbodyEl, index, rowEl: tr, infiniteEntries });
         // Now remove row and associated infinite lines
         tr.remove();
+        renumberRows();
         if (rowId) removeInfiniteLinesForRow(rowId);
         updateChart();
       }
@@ -279,12 +289,19 @@
       allSeries.delete(id);
       card.remove();
       updateChart();
+      updateEmptyHint();
     });
 
     seriesContainer.appendChild(card);
     allSeries.set(id, { id, cardEl: card, labelEl, colorEl, widthEl, tbodyEl: tbody, thXEl, thYEl });
-    if (!initial) { updateChart(); updateMathInfoLineMode(); }
+    if (!initial) { updateChart(); updateMathInfoLineMode(); updateEmptyHint(); }
     return id;
+  }
+
+  const emptyHintEl = qs('#emptySeriesHint');
+  function updateEmptyHint() {
+    if (!emptyHintEl) return;
+    emptyHintEl.hidden = allSeries.size > 0;
   }
 
   function gatherSeriesData() {
@@ -603,12 +620,12 @@
     c.options.scales.x.title.display = true;
     c.options.scales.x.title.text = xAxisLabelText.value || '';
     c.options.scales.x.title.color = xAxisLabelColor.value || '#333';
-    c.options.scales.x.title.font = { size: clampNum(xAxisLabelSize.value, 8, 48, 14), family: xAxisLabelFont.value };
+    c.options.scales.x.title.font = { size: clampNum(xAxisLabelSize.value, 8, 48, 24), family: xAxisLabelFont.value };
 
     c.options.scales.y.title.display = true;
     c.options.scales.y.title.text = yAxisLabelText.value || '';
     c.options.scales.y.title.color = yAxisLabelColor.value || '#333';
-    c.options.scales.y.title.font = { size: clampNum(yAxisLabelSize.value, 8, 48, 14), family: yAxisLabelFont.value };
+    c.options.scales.y.title.font = { size: clampNum(yAxisLabelSize.value, 8, 48, 24), family: yAxisLabelFont.value };
 
     // Sync series table headers with axis labels
     const xHeader = xAxisLabelText.value || 'X';
@@ -621,10 +638,10 @@
     // Tick styling
     c.options.scales.x.ticks.color = xTickColor.value || '#444';
     c.options.scales.x.ticks.font = { size: clampNum(xTickSize.value, 6, 36, 12), family: xTickFont.value };
-    c.options.scales.x.ticks.stepSize = 1;
+    c.options.scales.x.ticks.autoSkip = true;
     c.options.scales.y.ticks.color = yTickColor.value || '#444';
     c.options.scales.y.ticks.font = { size: clampNum(yTickSize.value, 6, 36, 12), family: yTickFont.value };
-    c.options.scales.y.ticks.stepSize = 1;
+    c.options.scales.y.ticks.autoSkip = true;
 
     // Legend
     c.options.plugins.legend.display = !!legendDisplay.checked;
@@ -654,19 +671,27 @@
     while (b) { const t = b; b = a % b; a = t; }
     return a || 1;
   }
-  function toFractionApprox(x, maxDenPow = 6) {
+  function toFractionApprox(x, maxDen = 1000) {
     if (!Number.isFinite(x)) return { num: 0, den: 1 };
     if (Math.abs(x) < 1e-12) return { num: 0, den: 1 };
-    const s = x.toFixed(maxDenPow);
-    const parts = s.split('.');
-    if (parts.length === 1) return { num: parseInt(parts[0], 10), den: 1 };
-    const decimals = parts[1].replace(/0+$/,'');
-    if (decimals.length === 0) return { num: parseInt(parts[0], 10), den: 1 };
-    const den = Math.pow(10, decimals.length);
-    const num = Math.round(parseFloat(s) * den);
-    const g = gcdInt(num, den);
-    const sign = num < 0 ? -1 : 1;
-    return { num: sign * Math.abs(num / g), den: Math.abs(den / g) };
+    const sign = x < 0 ? -1 : 1;
+    const ax = Math.abs(x);
+    let bestNum = Math.round(ax);
+    let bestDen = 1;
+    let bestErr = Math.abs(ax - bestNum);
+    for (let d = 2; d <= maxDen; d++) {
+      const n = Math.round(ax * d);
+      if (n === 0) continue;
+      const err = Math.abs(ax - n / d);
+      if (err < bestErr - 1e-15) {
+        bestNum = n;
+        bestDen = d;
+        bestErr = err;
+        if (err < 1e-12) break;
+      }
+    }
+    const g = gcdInt(bestNum, bestDen);
+    return { num: sign * (bestNum / g), den: bestDen / g };
   }
   function divideFractions(n1, d1, n2, d2) {
     if (n2 === 0) return { num: NaN, den: 1 };
@@ -789,7 +814,7 @@
   // Retrofit existing rows from older sessions (ensure Select checkbox and IDs)
   function retrofitExistingRows() {
     const rows = qsa('tbody tr', seriesContainer);
-    for (const tr of rows) {
+    rows.forEach((tr, i) => {
       // Ensure a unique data-row-id
       if (!tr.hasAttribute('data-row-id')) {
         tr.setAttribute('data-row-id', `R${rowIdSeq++}`);
@@ -799,15 +824,15 @@
       const hasSelect = tr.querySelector('.select-point');
       if (!hasSelect) {
         const td = document.createElement('td');
-        td.className = 'row-select';
-        td.innerHTML = '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="select-point"> Select</label>';
+        td.className = 'row-num';
+        td.innerHTML = `<input type="checkbox" class="select-point" aria-label="Select row ${i+1}" /><span class="row-num-label">${i+1}</span>`;
         if (firstTd) {
           tr.insertBefore(td, firstTd);
         } else {
           tr.appendChild(td);
         }
       }
-    }
+    });
   }
 
   // Initialize
@@ -852,7 +877,7 @@
           if (!tr.classList.contains('selected-point')) {
             tr.classList.add('selected-point');
             tr.setAttribute('data-selected-at', String(rowSelectCounter++));
-            tr.style.backgroundColor = '#fff8e1';
+            /* selected-point styling via CSS */
           }
           const cb = qs('.select-point', tr);
           if (cb) cb.checked = true;
@@ -862,7 +887,7 @@
         for (const tr of rows) {
           tr.classList.remove('selected-point');
           tr.removeAttribute('data-selected-at');
-          tr.style.backgroundColor = '';
+          /* deselected styling via CSS */
           const cb = qs('.select-point', tr);
           if (cb) cb.checked = false;
         }
@@ -886,6 +911,7 @@
   // Initialize empty chart (no default series or data)
   updateChart();
   updateMathInfoLineMode();
+  updateEmptyHint();
 
   // Row selection for slope/equation info
   seriesContainer.addEventListener('click', (e) => {
@@ -899,13 +925,13 @@
     if (wasSelected) {
       tr.classList.remove('selected-point');
       tr.removeAttribute('data-selected-at');
-      tr.style.backgroundColor = '';
+      /* deselected styling via CSS */
       const cb = qs('.select-point', tr);
       if (cb) cb.checked = false;
     } else {
       tr.classList.add('selected-point');
       tr.setAttribute('data-selected-at', String(rowSelectCounter++));
-      tr.style.backgroundColor = '#fff8e1';
+      /* selected-point styling via CSS */
       const cb = qs('.select-point', tr);
       if (cb) cb.checked = true;
     }
@@ -923,11 +949,11 @@
     if (cb.checked) {
       tr.classList.add('selected-point');
       tr.setAttribute('data-selected-at', String(rowSelectCounter++));
-      tr.style.backgroundColor = '#fff8e1';
+      /* selected-point styling via CSS */
     } else {
       tr.classList.remove('selected-point');
       tr.removeAttribute('data-selected-at');
-      tr.style.backgroundColor = '';
+      /* deselected styling via CSS */
     }
     updateMathInfoLineMode();
     refreshCreateDeleteBtn();
@@ -1060,12 +1086,11 @@
             const yRaw = parseFloat(tr.querySelector('.cell-y')?.value ?? '');
             if (!Number.isNaN(x) && !Number.isNaN(yRaw)) {
               anyRow = true;
-              const y = Math.max(0, yRaw);
               const rr = document.createElement('tr');
               const tdx = document.createElement('td');
               const tdy = document.createElement('td');
               tdx.textContent = String(x);
-              tdy.textContent = String(y);
+              tdy.textContent = String(yRaw);
               [tdx, tdy].forEach(td => {
                 td.style.border = '1px solid #f0f0f0';
                 td.style.padding = '4px 6px';
@@ -1266,8 +1291,8 @@
       }
       return {
         axes: {
-          x: { text: xAxisLabelText.value || '', size: Number(xAxisLabelSize.value) || 14, color: xAxisLabelColor.value || '#333', font: xAxisLabelFont.value },
-          y: { text: yAxisLabelText.value || '', size: Number(yAxisLabelSize.value) || 14, color: yAxisLabelColor.value || '#333', font: yAxisLabelFont.value },
+          x: { text: xAxisLabelText.value || '', size: Number(xAxisLabelSize.value) || 24, color: xAxisLabelColor.value || '#333', font: xAxisLabelFont.value },
+          y: { text: yAxisLabelText.value || '', size: Number(yAxisLabelSize.value) || 24, color: yAxisLabelColor.value || '#333', font: yAxisLabelFont.value },
         },
         ticks: {
           x: { size: Number(xTickSize.value) || 12, color: xTickColor.value || '#444', font: xTickFont.value },
@@ -1383,10 +1408,12 @@
         for (let r = currentRows.length; r < rows.length; r++) {
           const tr = document.createElement('tr');
           const rv = rows[r] || {};
+          const rn = r + 1;
           tr.innerHTML = `
+            <td class="row-num"><input type="checkbox" class="select-point" aria-label="Select row ${rn}" /><span class="row-num-label">${rn}</span></td>
             <td><input type="number" step="any" class="cell-x" value="${rv.x ?? ''}" aria-label="X value"></td>
             <td><input type="number" step="any" class="cell-y" value="${rv.y ?? ''}" aria-label="Y value"></td>
-            <td class="row-actions"><button type="button" class="del-row">Delete</button></td>
+            <td class="row-del"><button type="button" class="del-row" aria-label="Delete row ${rn}" title="Delete row">&times;</button></td>
           `;
           tbodyEl.appendChild(tr);
         }
@@ -1542,7 +1569,7 @@
     for (const tr of selected) {
       tr.classList.remove('selected-point');
       tr.removeAttribute('data-selected-at');
-      tr.style.backgroundColor = '';
+      /* deselected styling via CSS */
       const cb = qs('.select-point', tr);
       if (cb) cb.checked = false;
     }

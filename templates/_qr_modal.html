@@ -1,0 +1,40 @@
+<!-- Share QR modal (shared partial). Focus trap + Escape close handled by base.html modal a11y controller. -->
+<div id="qrModal" class="modal" hidden aria-hidden="true" aria-modal="true" role="dialog" aria-labelledby="qrModalTitle" tabindex="-1">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="qrModalTitle">Share session</h3>
+      <button id="closeQrModal" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div class="qr-body">
+      <img id="qrImage" src="" alt="QR code to join session" />
+      <div class="qr-info">
+        <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
+        <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
+        <div style="display:flex; gap:6px;">
+          <input id="qrLinkText" type="text" readonly style="flex:1;" />
+          <button id="qrCopyBtn" type="button" class="btn-light" aria-label="Copy share link">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function(){
+    const btn = document.getElementById('qrCopyBtn');
+    const inp = document.getElementById('qrLinkText');
+    if (!btn || !inp) return;
+    btn.addEventListener('click', async function(){
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(inp.value || '');
+        } else {
+          inp.select(); document.execCommand('copy');
+        }
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(function(){ btn.textContent = orig; }, 1200);
+      } catch(e) {}
+    });
+  })();
+</script>

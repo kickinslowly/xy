@@ -53,41 +53,43 @@
     return clusters;
   }
 
-  // Given a cluster, return prioritized candidate cells to try next
+  // Given a cluster, return prioritized candidate cells to try next.
+  // For aligned (multi-cell same-row or same-col) clusters we ONLY return
+  // line extensions — the ship's axis is known, so perpendicular neighbors
+  // would waste shots on cells that can't be part of this ship. Once both
+  // line extensions are exhausted (out-of-bounds or already shot), the
+  // cluster is effectively dead and pursuit moves on.
   function candidatesFromCluster(cluster, n, shotsMap){
-    // shotsMap: all shot positions (hits or misses) for quick lookup
     const shot = shotsMap || {};
     const cands = [];
     if (!cluster || cluster.length === 0) return cands;
-    // Determine if aligned horizontally or vertically
     const rows = new Set(cluster.map(([r,_]) => r));
     const cols = new Set(cluster.map(([_,c]) => c));
     if (cluster.length >= 2 && (rows.size === 1 || cols.size === 1)){
-      // Aligned along a line
       if (rows.size === 1){
         const r = cluster[0][0];
         const cs = cluster.map(([_,c]) => c).sort((a,b)=>a-b);
-        // extend left
-        let cl = cs[0] - 1; while (cl >= 0 && !shot[rcKey(r,cl)]) { cands.push([r,cl]); break; }
-        // extend right
-        let cr = cs[cs.length-1] + 1; while (cr < n && !shot[rcKey(r,cr)]) { cands.push([r,cr]); break; }
+        const cl = cs[0] - 1;
+        if (cl >= 0 && !shot[rcKey(r,cl)]) cands.push([r,cl]);
+        const crEnd = cs[cs.length-1] + 1;
+        if (crEnd < n && !shot[rcKey(r,crEnd)]) cands.push([r,crEnd]);
       } else {
         const c = cluster[0][1];
         const rs = cluster.map(([r,_]) => r).sort((a,b)=>a-b);
-        // extend up
-        let ru = rs[0] - 1; while (ru >= 0 && !shot[rcKey(ru,c)]) { cands.push([ru,c]); break; }
-        // extend down
-        let rd = rs[rs.length-1] + 1; while (rd < n && !shot[rcKey(rd,c)]) { cands.push([rd,c]); break; }
+        const ru = rs[0] - 1;
+        if (ru >= 0 && !shot[rcKey(ru,c)]) cands.push([ru,c]);
+        const rd = rs[rs.length-1] + 1;
+        if (rd < n && !shot[rcKey(rd,c)]) cands.push([rd,c]);
       }
+      return cands;
     }
-    // If single or no line extension available, try orthogonal neighbors around any member
+    // Single-cell or non-linear cluster: direction unknown, try all neighbors.
     for (const [r,c] of cluster){
       for (const [nr,nc] of neighbors4(r,c,n)){
         const k = rcKey(nr,nc);
         if (!shot[k]) cands.push([nr,nc]);
       }
     }
-    // De-dup
     const uniq = []; const seen = new Set();
     for (const [r,c] of cands){ const k = rcKey(r,c); if (!seen.has(k)) { seen.add(k); uniq.push([r,c]); } }
     return uniq;

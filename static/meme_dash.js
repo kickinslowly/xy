@@ -82,6 +82,9 @@
   // We elect a host (ownerId = first creator). Host spawns memes, resolves collisions.
   let state = null; // { ownerId, players: {id: {...}}, memes: [...], lastSpawnAt }
   // Timestamp (performance.now) of last remote authoritative state received; drives owner failover
+  // Bumped from 800ms to 2500ms to ride out school Wi-Fi jitter and brief GC
+  // pauses that were causing spurious owner takeovers and double-spawn.
+  const OWNER_TAKEOVER_MS = Number(window.MEMEDASH_TAKEOVER_MS || 2500);
   let lastRemoteStateAt = 0;
 
   const my = {
@@ -281,7 +284,7 @@
       const amOwner = state && state.ownerId === clientId;
       if (!amOwner) {
         // attempt to take ownership if stale
-        if (now() - lastRemoteStateAt <= 2000) { terminatorToggle.checked = !!(state && state.terminatorMode); return; }
+        if ((now() - lastRemoteStateAt) <= OWNER_TAKEOVER_MS) { terminatorToggle.checked = !!(state && state.terminatorMode); return; }
         if (state) state.ownerId = clientId;
       }
       if (want) {
@@ -342,7 +345,14 @@
         const outcome = isYou ? 'win' : 'lose';
         showCelebration(outcome, { winnerName, isYou, score: msg.score });
         // Record result (best-effort)
-        const payload = { mode: 'memedash', game_name: 'Meme Dash', outcome: outcome, score: (msg.score || 0), room_pin: window.currentSessionPin };
+        const payload = {
+          mode: 'memedash',
+          game_name: 'Meme Dash',
+          outcome: outcome,
+          score: (msg.score || 0),
+          room_pin: window.currentSessionPin,
+          details_json: { challenge_type: 'memedash', winner_id: winnerId, is_winner: isYou },
+        };
         window.recordResult?.(payload);
       } catch(_) { }
     });
@@ -409,7 +419,12 @@
     updateTerminatorUi();
   }
 
+  const BROADCAST_MIN_MS = 50; // cap owner snapshots to 20 Hz
+  let lastBroadcastMs = 0;
   function broadcast(){
+    const t = performance.now();
+    if ((t - lastBroadcastMs) < BROADCAST_MIN_MS) return;
+    lastBroadcastMs = t;
     try { socket?.emit('state_update', { room, mode, clientId, state }); } catch(_){ }
   }
 
@@ -425,6 +440,18 @@
     keys.delete(e.key);
     updateInput();
     sendInputUpdate();
+  });
+  // If the tab loses focus or becomes hidden, drop all held keys so the player
+  // doesn't keep walking when they switch tabs (keyup never fires for a held key
+  // when the window blurs).
+  function _clearHeldKeys() {
+    if (!keys.size) return;
+    keys.clear();
+    try { updateInput(); sendInputUpdate(); } catch(_){}
+  }
+  window.addEventListener('blur', _clearHeldKeys);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) _clearHeldKeys();
   });
 
   function updateInput(){
@@ -445,6 +472,19 @@
 
   // Game loop
   let lastTs = 0;
+  // Fixed physics substep. Without this, players on slow devices (low FPS,
+  // dt up to 50ms) integrate gravity over a single big step and overshoot
+  // jump apex — they reach platforms a 60fps player can't. Substepping at
+  // 1/120s makes physics frame-rate-independent up to dt = 50ms (max ~6 steps).
+  const PHYSICS_SUBSTEP = 1 / 120;
+  function steppedSimulate(dt, ownerSim){
+    let remaining = dt;
+    while (remaining > 1e-6) {
+      const step = remaining > PHYSICS_SUBSTEP ? PHYSICS_SUBSTEP : remaining;
+      if (ownerSim) simulate(step); else simulateLocal(step);
+      remaining -= step;
+    }
+  }
   function tick(ts){
     const dt = clamp((ts - lastTs) / 1000, 0, 0.05);
     lastTs = ts;
@@ -453,8 +493,8 @@
 
     // Owner runs simulation & spawning, then broadcasts
     if (state) {
-      // Owner failover: if remote owner appears inactive for >2s, promote self
-      if (state.ownerId !== clientId && (now() - lastRemoteStateAt) > 2000) {
+      // Owner failover: if remote owner appears inactive for > threshold, promote self
+      if (state.ownerId !== clientId && (now() - lastRemoteStateAt) > OWNER_TAKEOVER_MS) {
         state.ownerId = clientId;
         addMeIfMissing();
         lastRemoteStateAt = now();
@@ -463,10 +503,10 @@
       if (amOwner) {
         spawnLoop(ts);
         if (state.terminatorMode) { driveBotAI(dt); }
-        simulate(dt);
+        steppedSimulate(dt, true);
         broadcast();
       } else {
-        simulateLocal(dt); // move our player locally for responsiveness
+        steppedSimulate(dt, false); // move our player locally for responsiveness
       }
     }
 
@@ -561,11 +601,12 @@
     if (inp.up && p.grounded) {
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.grounded = false;
-      p.usedSecondJump = false; // allow a second jump later in this airtime
+      p.usedSecondJump = false;
+      if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('jump'); } catch(_){} }
     } else if (upEdge && !p.grounded && djActive && !p.usedSecondJump) {
-      // mid-air double jump
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.usedSecondJump = true;
+      if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('jump'); } catch(_){} }
     }
     p.vy += gravity * dt;
 
@@ -582,16 +623,27 @@
       p.grounded = false;
     }
 
-    // Collide with platforms (axis-aligned)
+    // Collide with platforms (axis-aligned). Two cases:
+    //   1. Landing on top from above (wasAbove + willOver + falling).
+    //   2. Bonking head from below (wasBelow + willUnder + rising) — kills the
+    //      wall-climb exploit where a fast jump into the platform corner
+    //      passed through the bottom.
     for (const plat of platforms) {
-      // Vertical landing
+      const withinX = (nx + p.w) > plat.x && nx < plat.x + plat.w;
+      if (!withinX) continue;
       const wasAbove = (p.y + p.h) <= plat.y;
       const willOver = (ny + p.h) >= plat.y;
-      const withinX = (nx + p.w) > plat.x && nx < plat.x + plat.w;
-      if (wasAbove && willOver && withinX && p.vy >= 0) {
+      if (wasAbove && willOver && p.vy >= 0) {
         ny = plat.y - p.h;
         p.vy = 0;
         p.grounded = true;
+        continue;
+      }
+      const wasBelow = p.y >= (plat.y + plat.h);
+      const willUnder = ny <= (plat.y + plat.h);
+      if (wasBelow && willUnder && p.vy < 0) {
+        ny = plat.y + plat.h;
+        p.vy = 0;
       }
     }
 
@@ -1172,35 +1224,45 @@
     p.total = (p.total || 0) + 1;
     const prev = p.counts[meme.type] || 0;
     p.counts[meme.type] = prev + 1;
-    p.flashUntil = Date.now() + 300; // flash feedback
+    p.flashUntil = Date.now() + 300;
     spawnWarmFuzzy(meme.x, meme.y);
+    if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('collect'); } catch(_){} }
 
-    // Got 5 of a kind => power up
     if (p.counts[meme.type] === 5) {
       p.powerType = meme.type;
       p.powerEndsAt = Date.now() + POWER_MS;
       showPowerupFx();
+      if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('levelup'); } catch(_){} }
     }
 
-    // Win if 5 of each
     const win = MEME_SET.every(t => (p.counts[t] || 0) >= 5);
     if (win) {
       announceWin(p);
     }
   }
 
+  // Single shared countdown interval. Any new power-up replaces the previous
+  // one (otherwise stacking pickups leak setIntervals racing on the same DOM).
+  let _powerupCountdownIv = null;
+  function _stopPowerupCountdown(){
+    if (_powerupCountdownIv != null) {
+      try { clearInterval(_powerupCountdownIv); } catch(_){}
+      _powerupCountdownIv = null;
+    }
+  }
+
   function showPowerupFx(){
     try {
+      _stopPowerupCountdown();
       powerupPill?.classList.remove('hidden');
-      let endsAt = Date.now() + POWER_MS;
+      const endsAt = Date.now() + POWER_MS;
       updatePowerCountdown(endsAt);
       bigFlash?.classList.add('show');
       setTimeout(() => bigFlash?.classList.remove('show'), 900);
-      // Countdown updates
-      const iv = setInterval(() => {
+      _powerupCountdownIv = setInterval(() => {
         const left = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
         updatePowerCountdown(endsAt);
-        if (left <= 0) { clearInterval(iv); powerupPill?.classList.add('hidden'); }
+        if (left <= 0) { _stopPowerupCountdown(); powerupPill?.classList.add('hidden'); }
       }, 250);
     } catch(_){}
   }
@@ -1212,7 +1274,10 @@
   }
 
   function announceWin(p){
-    // Broadcast a synchronized win event to all clients (including the winner)
+    // Broadcast a synchronized win event to all clients (including the winner).
+    // We deliberately do NOT reset player progress here — students see their
+    // final scores during the celebration overlay. The reset for the next
+    // round is deferred to hideCelebration() on the owner client.
     try {
       if (socket) {
         socket.emit('memedash_win', { room, mode, winnerId: p.id, winnerName: p.name || 'Player', score: p.total });
@@ -1220,19 +1285,23 @@
         // Fallback offline: show locally
         const isYou = (p.id === clientId);
         showCelebration(isYou ? 'win' : 'lose', { winnerName: p.name || 'Player', isYou });
-        window.recordResult?.({ mode: 'memedash', game_name: 'Meme Dash', outcome: (isYou ? 'win' : 'loss'), score: p.total, room_pin: window.currentSessionPin });
+        window.recordResult?.({ mode: 'memedash', game_name: 'Meme Dash', outcome: (isYou ? 'win' : 'lose'), score: p.total, room_pin: window.currentSessionPin, details_json: { challenge_type: 'memedash', is_winner: isYou } });
       }
     } catch(_){ }
+  }
 
-    // Reset minimal: clear memes and some progress to allow replay quickly
+  function resetForNextRound(){
+    if (!state || !state.players) return;
+    state.memes = [];
     for (const id of Object.keys(state.players)) {
       const pl = state.players[id];
       pl.total = 0;
       for (const t of MEME_SET) pl.counts[t] = 0;
       pl.powerEndsAt = 0; pl.powerType = null;
-      pl.x = Math.random() * (W - 80) + 40; pl.y = -120; pl.vx = 0; pl.vy = 0; pl.grounded = false;
+      pl.magnetEndsAt = 0; pl.doubleJumpEndsAt = 0;
+      pl.x = Math.random() * (W - 80) + 40;
+      pl.y = -120; pl.vx = 0; pl.vy = 0; pl.grounded = false;
     }
-    state.memes = [];
   }
 
   function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh){
@@ -1496,15 +1565,15 @@
         setTimeout(() => bigFlash.classList.remove('show'), 900);
       }
       if (powerupPill) {
+        _stopPowerupCountdown();
         powerupPill.classList.remove('hidden');
-        let iv;
         const update = () => {
           const left = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
           powerupPill.innerHTML = `MAGNET! <span id="powerupCountdown">${left}</span>s`;
-          if (left <= 0) { clearInterval(iv); powerupPill.classList.add('hidden'); }
+          if (left <= 0) { _stopPowerupCountdown(); powerupPill.classList.add('hidden'); }
         };
         update();
-        iv = setInterval(update, 250);
+        _powerupCountdownIv = setInterval(update, 250);
       }
     } catch(_){ }
   }
@@ -1518,15 +1587,15 @@
         setTimeout(() => bigFlash.classList.remove('show'), 900);
       }
       if (powerupPill) {
+        _stopPowerupCountdown();
         powerupPill.classList.remove('hidden');
-        let iv;
         const update = () => {
           const left = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
           powerupPill.innerHTML = `DOUBLE JUMP! <span id="powerupCountdown">${left}</span>s`;
-          if (left <= 0) { clearInterval(iv); powerupPill.classList.add('hidden'); }
+          if (left <= 0) { _stopPowerupCountdown(); powerupPill.classList.add('hidden'); }
         };
         update();
-        iv = setInterval(update, 250);
+        _powerupCountdownIv = setInterval(update, 250);
       }
     } catch(_){ }
   }
@@ -1540,6 +1609,7 @@
       celebrateOverlay.hidden = false;
       celebrateOverlay.setAttribute('data-outcome', outcome);
       celebrateOverlay.setAttribute('aria-hidden', 'false');
+      try { if (window.SoundFX) window.SoundFX.play(isYou ? 'win' : 'lose'); } catch(_){}
       if (celebrateTitleEl) celebrateTitleEl.textContent = isYou ? 'You Win!' : (outcome === 'win' ? `${winnerName} Wins!` : 'You Lost!');
       if (celebrateSubtitleEl) {
         if (outcome === 'win') {
@@ -1629,6 +1699,13 @@
       if (!celebrateOverlay) return;
       celebrateOverlay.hidden = true;
       celebrateOverlay.setAttribute('aria-hidden','true');
+      // Owner-only: now that the celebration is closing, reset world state
+      // for the next round and broadcast. Non-owner clients receive the
+      // fresh state via state_update.
+      if (state && state.ownerId === clientId) {
+        resetForNextRound();
+        try { broadcast(); } catch(_){}
+      }
       [fxConfetti, fxEmojis, fxBalloons].forEach(layer => { if (layer) layer.innerHTML = ''; });
     } catch(_){ }
   }

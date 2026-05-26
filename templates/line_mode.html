@@ -1,163 +1,144 @@
 {% extends "base.html" %}
-{% block title %}Line Graph Mode{% endblock %}
+{% block title %}Line Graph{% endblock %}
+{% block body_class %}mode-game mode-lines{% endblock %}
 {% block extra_head %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-  <style>
-    /* Minimal additions specific to line mode */
-    html, body { height: 100%; }
-    body { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
-    .main-wrap { display: grid; grid-template-columns: 360px 1fr; gap: 0; align-items: stretch; min-height: 0; }
-    .sidebar { width: auto; border-left: none; border-right: 1px solid #e0e0e0; overflow: auto; }
-    .series-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; margin-bottom: 10px; position: relative; }
-    .series-card header { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-right: 96px; }
-    .series-card table { width: 100%; border-collapse: collapse; }
-    .series-card th, .series-card td { border: 1px solid #eee; padding: 4px 6px; text-align: left; }
-    .series-card input[type="number"] { width: 100%; }
-    .series-card .row-actions { text-align: center; }
-    .series-card .remove-series { position: absolute; top: 8px; right: 8px; }
-    .chart-wrap { padding: 12px; display: grid; grid-template-rows: auto 1fr; gap: 12px; min-height: 0; overflow: auto; }
-    #lineChart { width: 100%; max-width: 1200px; height: 100%; border: 1px solid #ddd; background: #fff; }
-    .controls .group { align-items: baseline; }
-    .help-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; font-size:12px; border:1px solid #bbb; border-radius:50%; color:#555; background:#fff; cursor:help; margin-left:6px; }
-    .help-icon:hover { background:#f0f0f0; }
-    .line-info-header { position: relative; display: inline-flex; align-items: center; gap: 6px; }
-    .help-tooltip { position: fixed; z-index: 10000; background: #333; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 13px; min-width: 360px; max-width: min(80vw, 520px); line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,0.25); display: none; pointer-events: auto; }
-    .help-tooltip[data-open="true"] { display: block; }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}" />
 {% endblock %}
 
 {% block content %}
   <header class="app-header full-bleed" role="banner">
-    <nav class="toolbar panels controls" aria-label="Line graph controls">
-      <details class="panel panel-sm" style="margin-left:auto;">
-        <summary>Session</summary>
-        <div class="group" role="group" aria-label="Collaboration status">
-          <span id="presence" title="Number of users currently online in this document">• Offline</span>
-          <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
-          <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
-        </div>
-      </details>
-      <details class="panel" open>
-        <summary>Axes</summary>
-        <div class="group" role="group" aria-label="Axis labels">
-          <label>X label: <input id="xAxisLabelText" type="text" value="X" /></label>
-          <label>Size: <input id="xAxisLabelSize" type="number" min="8" max="48" value="14" /></label>
-          <label>Color: <input id="xAxisLabelColor" type="color" value="#333333" /></label>
-          <label>Font:
-            <select id="xAxisLabelFont">
-              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
-              <option value="Georgia, serif">Serif</option>
-              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
-            </select>
-          </label>
-        </div>
-        <div class="group" role="group" aria-label="Axis labels">
-          <label>Y label: <input id="yAxisLabelText" type="text" value="Y" /></label>
-          <label>Size: <input id="yAxisLabelSize" type="number" min="8" max="48" value="14" /></label>
-          <label>Color: <input id="yAxisLabelColor" type="color" value="#333333" /></label>
-          <label>Font:
-            <select id="yAxisLabelFont">
-              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
-              <option value="Georgia, serif">Serif</option>
-              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
-            </select>
-          </label>
-        </div>
-        <div class="group" role="group" aria-label="Tick labels">
-          <label>X ticks size: <input id="xTickSize" type="number" min="6" max="36" value="12" /></label>
-          <label>Color: <input id="xTickColor" type="color" value="#444444" /></label>
-          <label>Font:
-            <select id="xTickFont">
-              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
-              <option value="Georgia, serif">Serif</option>
-              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
-            </select>
-          </label>
-          <span class="hint">X can be negative</span>
-        </div>
-        <div class="group" role="group" aria-label="Tick labels">
-          <label>Y ticks size: <input id="yTickSize" type="number" min="6" max="36" value="12" /></label>
-          <label>Color: <input id="yTickColor" type="color" value="#444444" /></label>
-          <label>Font:
-            <select id="yTickFont">
-              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
-              <option value="Georgia, serif">Serif</option>
-              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
-            </select>
-          </label>
-          <span class="hint">Y is constrained to 0 or above</span>
-        </div>
-      </details>
+    <nav class="toolbar panels controls line-toolbar" aria-label="Line graph controls">
+      <div class="line-toolbar-left">
+        <button id="addSeriesBtn" class="btn-3d" type="button">+ Add Series</button>
+        <button id="exportPdfBtn" class="btn-light" type="button">Export PDF</button>
+      </div>
 
-      <details class="panel" open>
-        <summary>Legend</summary>
-        <div class="group" role="group" aria-label="Legend controls">
-          <label><input id="legendDisplay" type="checkbox" checked /> Show legend</label>
-          <label>Label size: <input id="legendSize" type="number" min="8" max="36" value="12" /></label>
-          <label>Color: <input id="legendColor" type="color" value="#333333" /></label>
-          <label>Font:
-            <select id="legendFont">
-              <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
-              <option value="Georgia, serif">Serif</option>
-              <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
-            </select>
-          </label>
-        </div>
-      </details>
+      <div class="line-toolbar-center">
+        <details class="panel panel-sm">
+          <summary>Axes &amp; Legend</summary>
+          <div class="customize-grid">
+            <fieldset class="customize-fieldset">
+              <legend>Axis Labels</legend>
+              <div class="customize-row">
+                <label class="lbl-inline">X label <input id="xAxisLabelText" type="text" value="X" class="input-med" /></label>
+                <label class="lbl-inline">Y label <input id="yAxisLabelText" type="text" value="Y" class="input-med" /></label>
+              </div>
+              <details class="customize-details">
+                <summary class="customize-toggle">Font &amp; color options</summary>
+                <div class="customize-row">
+                  <label class="lbl-sm">X size <input id="xAxisLabelSize" type="number" min="8" max="48" value="24" class="input-xs" /></label>
+                  <label class="lbl-sm">Color <input id="xAxisLabelColor" type="color" value="#333333" /></label>
+                  <label class="lbl-sm">Font
+                    <select id="xAxisLabelFont">
+                      <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+                      <option value="Georgia, serif">Serif</option>
+                      <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="customize-row">
+                  <label class="lbl-sm">Y size <input id="yAxisLabelSize" type="number" min="8" max="48" value="24" class="input-xs" /></label>
+                  <label class="lbl-sm">Color <input id="yAxisLabelColor" type="color" value="#333333" /></label>
+                  <label class="lbl-sm">Font
+                    <select id="yAxisLabelFont">
+                      <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+                      <option value="Georgia, serif">Serif</option>
+                      <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
+            </fieldset>
 
-      <details class="panel" open>
-        <summary>Series</summary>
-        <div class="group" role="group" aria-label="Series controls">
-          <button id="addSeriesBtn" type="button">Add data series</button>
-        </div>
-      </details>
+            <fieldset class="customize-fieldset">
+              <legend>Tick Marks</legend>
+              <div class="customize-row">
+                <label class="lbl-sm">X size <input id="xTickSize" type="number" min="6" max="36" value="12" class="input-xs" /></label>
+                <label class="lbl-sm">Color <input id="xTickColor" type="color" value="#444444" /></label>
+                <label class="lbl-sm">Font
+                  <select id="xTickFont">
+                    <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+                    <option value="Georgia, serif">Serif</option>
+                    <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+                  </select>
+                </label>
+              </div>
+              <div class="customize-row">
+                <label class="lbl-sm">Y size <input id="yTickSize" type="number" min="6" max="36" value="12" class="input-xs" /></label>
+                <label class="lbl-sm">Color <input id="yTickColor" type="color" value="#444444" /></label>
+                <label class="lbl-sm">Font
+                  <select id="yTickFont">
+                    <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+                    <option value="Georgia, serif">Serif</option>
+                    <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+                  </select>
+                </label>
+              </div>
+            </fieldset>
 
-      <div class="panel">
-        <div class="group" style="display:flex; gap:10px; align-items:center;">
-          <button id="exportPdfBtn" class="btn-light" type="button">📄 Export PDF</button>
-        </div>
+            <fieldset class="customize-fieldset">
+              <legend>Legend</legend>
+              <div class="customize-row">
+                <label class="lbl-inline"><input id="legendDisplay" type="checkbox" checked /> Show legend</label>
+                <label class="lbl-sm">Size <input id="legendSize" type="number" min="8" max="36" value="12" class="input-xs" /></label>
+                <label class="lbl-sm">Color <input id="legendColor" type="color" value="#333333" /></label>
+                <label class="lbl-sm">Font
+                  <select id="legendFont">
+                    <option value="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" selected>Sans</option>
+                    <option value="Georgia, serif">Serif</option>
+                    <option value="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Mono</option>
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+        </details>
+      </div>
+
+      <div class="line-toolbar-right">
+        <details class="panel panel-sm">
+          <summary>
+            <span id="presence" title="Users online">• Offline</span>
+          </summary>
+          <div class="group" role="group" aria-label="Session">
+            <button id="shareSessionBtn" class="btn-light" type="button">Share</button>
+            <button id="joinSessionBtn" class="btn-light" type="button">Join</button>
+          </div>
+        </details>
       </div>
     </nav>
   </header>
 
-  <main class="main-wrap full-bleed">
-    <aside class="sidebar" aria-label="Data tables">
-      <div id="mathInfoLine" class="series-card" style="margin: 8px 12px;">
-        <div class="line-info-header"><strong>Line info</strong> <button id="lineInfoHelp" type="button" class="help-icon" aria-label="Tips" aria-haspopup="dialog" aria-expanded="false" aria-describedby="lineInfoHelpTip">?</button><div id="lineInfoHelpTip" class="help-tooltip" role="tooltip">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div></div>
-        <div id="mathInfoLineContent" class="hint"></div>
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-          <button id="createDeleteLineBtn" type="button" style="display:none;">Create line</button>
-          <button id="selectAllBtn" type="button">Select all rows</button>
+  <main class="game-layout full-bleed">
+    <aside class="game-sidebar" aria-label="Data tables">
+      <div id="mathInfoLine" class="line-info-card">
+        <div class="line-info-header">
+          <strong>Line Info</strong>
+          <button id="lineInfoHelp" type="button" class="help-icon" aria-label="Tips" aria-haspopup="dialog" aria-expanded="false" aria-describedby="lineInfoHelpTip">?</button>
+          <div id="lineInfoHelpTip" class="help-tooltip" role="tooltip">Select two data points to see slope and equation. Select 3+ to see best-fit line.</div>
+        </div>
+        <div id="mathInfoLineContent" class="line-info-content">Select 2 points to see slope &amp; equation</div>
+        <div class="line-info-actions">
+          <button id="createDeleteLineBtn" class="btn-3d btn-sm" type="button" style="display:none;">Create line</button>
+          <button id="selectAllBtn" class="btn-light btn-sm" type="button">Select all rows</button>
         </div>
       </div>
+
       <div id="seriesContainer"></div>
-    </aside>
-    <section class="chart-wrap">
-      <div>
-        <p class="hint" style="margin: 0 0 6px;">Enter numeric X and Y values in one or more tables. The graph updates automatically.</p>
+
+      <div id="emptySeriesHint" class="empty-hint">
+        <div class="empty-hint-icon">+</div>
+        <p>Add a data series to start graphing</p>
+        <small>Click <strong>+ Add Series</strong> above to begin</small>
       </div>
+    </aside>
+
+    <section class="chart-wrap">
       <canvas id="lineChart" aria-label="Line graph" role="img"></canvas>
     </section>
   </main>
 
-  <!-- Share QR modal -->
-  <div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
-    <div class="modal-backdrop" data-close="1"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>Share session</h3>
-        <button id="closeQrModal" type="button" aria-label="Close">×</button>
-      </div>
-      <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
-        <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
-        <div style="min-width:260px; max-width:520px;">
-          <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
-          <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
-          <input id="qrLinkText" type="text" readonly style="width:100%;" />
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include '_qr_modal.html' %}
 {% endblock %}
 
 {% block extra_scripts %}

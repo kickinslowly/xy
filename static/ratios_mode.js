@@ -4,12 +4,14 @@
   const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const pick2 = (arr) => {
-    if (arr.length < 2) return [arr[0], arr[0]];
+    if (!arr || arr.length < 2) return [arr && arr[0], arr && arr[0]];
     const i = Math.floor(Math.random() * arr.length);
     let j = Math.floor(Math.random() * arr.length);
     if (j === i) j = (j + 1) % arr.length;
     return [arr[i], arr[j]];
   };
+  // Tracks the last challenge kind in master mode so we can avoid repeats.
+  let _lastMasterKind = null;
   const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; };
   const formatRatio = (a, b) => `${a} : ${b}`;
 
@@ -23,7 +25,8 @@
   const qrPinText = qs('#qrPinText');
   const closeQrBtn = qs('#closeQrModal');
 
-  const modeSelect = qs('#modeSelect');
+  const modePills = qsa('.mode-pill');
+  const scoreBarFill = qs('#scoreBarFill');
   const nextChallengeBtn = qs('#nextChallengeBtn');
   const scoreEl = qs('#score');
   const challengeText = qs('#challengeText');
@@ -139,30 +142,66 @@
     socket.emit('state_update', { room, mode: modeId, clientId, state: sharedState });
   }
 
+  // Adaptive difficulty: 0=Beginner, 1=Developing, 2=Proficient, 3=Advanced.
+  // State + streak math live in static/adaptive_difficulty.js (shared with main.js).
+  // Level persists per-mode to localStorage; badge stays in sync across page loads.
+  const ADAPTIVE_MODE_KEY = 'ratios';
+  const DIFF_LABELS = (window.AdaptiveDifficulty && window.AdaptiveDifficulty.LABELS) || ['Beginner', 'Developing', 'Proficient', 'Advanced'];
+  let challengeDifficulty = (window.AdaptiveDifficulty ? window.AdaptiveDifficulty.getLevel(ADAPTIVE_MODE_KEY) : 1);
+
+  function rndForDifficulty() {
+    switch (challengeDifficulty) {
+      case 0: return rnd(1, 3);
+      case 2: return rnd(1, 8);
+      case 3: return rnd(2, 12);
+      default: return rnd(1, 5);
+    }
+  }
+  function adjustDifficulty(correct) {
+    if (!window.AdaptiveDifficulty) return;
+    const r = window.AdaptiveDifficulty.recordResult(ADAPTIVE_MODE_KEY, !!correct);
+    challengeDifficulty = r.level;
+    window.AdaptiveDifficulty.updateBadges(r.level);
+  }
+  function updateDifficultyBadge() {
+    if (window.AdaptiveDifficulty) window.AdaptiveDifficulty.updateBadges(challengeDifficulty);
+  }
+  try { updateDifficultyBadge(); } catch(e) {}
+
   // Challenge generation
   function generateChallenge(kind) {
     const memes = (window.AVAILABLE_MEMES || []).slice();
-    if (memes.length === 0) return null;
+    if (memes.length < 2) return null; // Need two distinct memes for any ratio prompt
     let nowKind = kind || sharedState.mode || 'create';
     if (nowKind === 'master') {
       const kinds = ['create', 'partpart', 'partwhole', 'equiv'];
-      nowKind = kinds[Math.floor(Math.random() * kinds.length)];
+      // Anti-repeat: re-roll once if we'd repeat the previous kind. Keeps
+      // master mode varied without dropping any kind from rotation.
+      let pick = kinds[Math.floor(Math.random() * kinds.length)];
+      if (pick === _lastMasterKind && kinds.length > 1) {
+        pick = kinds[Math.floor(Math.random() * kinds.length)];
+      }
+      nowKind = pick;
+      _lastMasterKind = pick;
     }
 
     if (nowKind === 'equiv') {
       const [aSrc, bSrc] = pick2(memes);
-      const a = rnd(1, 5), b = rnd(1, 5);
+      let a = rndForDifficulty(), b = rndForDifficulty();
+      // Avoid degenerate 1:1 prompts where the only equivalent ratios are
+      // visually identical multiples of the same image counts.
+      if (a === b) b = (b % 6) + 1;
       return { type: 'equiv', aSrc, bSrc, a, b };
     }
     if (nowKind === 'partwhole') {
       const [aSrc, bSrc] = pick2(memes);
-      const a = rnd(1, 5), b = rnd(1, 5); // a of A, b of B => total = a+b
-      const which = Math.random() < 0.5 ? 'a' : 'b'; // which part is asked to compare to the whole
+      const a = rndForDifficulty(), b = rndForDifficulty();
+      const which = Math.random() < 0.5 ? 'a' : 'b';
       return { type: 'partwhole', aSrc, bSrc, a, b, which };
     }
     // create/partpart default
     const [aSrc, bSrc] = pick2(memes);
-    const a = rnd(1, 5), b = rnd(1, 5);
+    const a = rndForDifficulty(), b = rndForDifficulty();
     return { type: nowKind === 'partpart' ? 'partpart' : 'create', aSrc, bSrc, a, b };
   }
 
@@ -279,7 +318,12 @@
   function applySharedState() {
     // update UI from sharedState
     if (scoreEl) scoreEl.textContent = String(sharedState.score || 0);
-    if (modeSelect) modeSelect.value = sharedState.mode || 'create';
+    if (scoreBarFill) scoreBarFill.style.width = ((sharedState.score || 0) / 20 * 100) + '%';
+    modePills.forEach(p => {
+      const isActive = p.dataset.mode === (sharedState.mode || 'create');
+      p.classList.toggle('active', isActive);
+      p.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
     if (!sharedState.current) {
       // create first challenge
       sharedState.current = generateChallenge(sharedState.mode);
@@ -301,7 +345,20 @@
   }
 
   function updateBoardCountsUI() {
-    // no-op for now; board shows placed items already
+    let counter = document.getElementById('boardCounter');
+    if (!counter) {
+      counter = document.createElement('div');
+      counter.id = 'boardCounter';
+      counter.className = 'board-counter';
+      counter.setAttribute('aria-live', 'polite');
+      if (board) board.parentNode.insertBefore(counter, board);
+    }
+    const ch = sharedState.current;
+    if (!ch || !ch.aSrc) { counter.textContent = ''; return; }
+    const aCount = boardCounts[ch.aSrc] || 0;
+    const bCount = ch.bSrc ? (boardCounts[ch.bSrc] || 0) : 0;
+    if (aCount === 0 && bCount === 0) { counter.textContent = ''; return; }
+    counter.textContent = ch.bSrc ? `${aCount} : ${bCount}` : `${aCount}`;
   }
 
   function placeMeme(src) {
@@ -323,9 +380,13 @@
     });
   }
 
+  let _submitLock = false;
   function handleSubmit() {
+    if (_submitLock) return;
     const ch = sharedState.current;
     if (!ch) return;
+    _submitLock = true;
+    setTimeout(() => { _submitLock = false; }, 1200);
 
     // Count on board
     const aCount = boardCounts[ch.aSrc] || 0;
@@ -348,12 +409,13 @@
       if (Number.isNaN(partVal) || Number.isNaN(totalVal)) {
         showToast('Enter both numbers');
         correct = false;
+      } else if (partVal <= 0 || totalVal <= 0 || partVal >= totalVal) {
+        correct = false;
       } else {
-        if (which === 'a') {
-          correct = (partVal === ch.a) && (totalVal === ch.a + ch.b);
-        } else {
-          correct = (partVal === ch.b) && (totalVal === ch.a + ch.b);
-        }
+        // Accept any equivalent ratio: part / total === target_part / (a+b)
+        const targetPart = (which === 'a') ? ch.a : ch.b;
+        const targetWhole = ch.a + ch.b;
+        correct = partVal * targetWhole === targetPart * totalVal;
       }
     } else {
       // create or partpart
@@ -361,14 +423,17 @@
     }
 
     if (correct) {
+      adjustDifficulty(true);
       // increment shared score, new challenge
       const prevMode = sharedState.mode || 'create';
       sharedState.score = (sharedState.score || 0) + 1;
       if (scoreEl) scoreEl.textContent = String(sharedState.score);
+      if (scoreBarFill) scoreBarFill.style.width = (sharedState.score / 20 * 100) + '%';
       // Big silly full-screen pop!
       startSuccessFX();
       flash(splashSuccess, 1100);
       setTimeout(() => stopSuccessFX(), 1300);
+      try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
       if (sharedState.score >= 20) {
         victoryTitle.textContent = `Goofy Ratio Victory! 🎉`;
         victorySub.textContent = `20/20 — Master of ${labelForMode(prevMode)}!`;
@@ -383,7 +448,7 @@
             game_name: labelForMode(prevMode),
             outcome: 'success',
             room_pin: room,
-            details_json: { challenge_type: 'ratio', ratio_mode: prevMode, correct: true, challenge: ch }
+            details_json: { challenge_type: 'ratio', ratio_mode: prevMode, correct: true, difficulty: DIFF_LABELS[challengeDifficulty], challenge: ch }
           };
           // Fire-and-forget; backend counts successes for achievements
           window.recordResult(payload).catch(() => {});
@@ -395,8 +460,10 @@
       broadcastState();
       resetBoard();
     } else {
+      adjustDifficulty(false);
       // Full-screen fail splash, but brief
       flash(splashFail, 1000);
+      try { if (window.SoundFX) window.SoundFX.play('fail'); } catch(_){}
       // Record incorrect attempt for analytics
       try {
         if (window.recordResult) {
@@ -405,7 +472,7 @@
             game_name: labelForMode(sharedState.mode || 'create'),
             outcome: 'incorrect',
             room_pin: room,
-            details_json: { challenge_type: 'ratio', ratio_mode: (sharedState.mode || 'create'), correct: false }
+            details_json: { challenge_type: 'ratio', ratio_mode: (sharedState.mode || 'create'), correct: false, difficulty: DIFF_LABELS[challengeDifficulty] }
           }).catch(() => {});
         }
       } catch (e) { /* ignore */ }
@@ -524,6 +591,7 @@
     // reset score and keep playing
     sharedState.score = 0;
     if (scoreEl) scoreEl.textContent = '0';
+    if (scoreBarFill) scoreBarFill.style.width = '0%';
     sharedState.current = generateChallenge(sharedState.mode);
     if (challengeText) challengeText.innerHTML = challengeTextFor(sharedState.current);
     updateLayoutForCurrent();
@@ -545,22 +613,86 @@
     }
   });
 
-  // Drag and drop from palette to board
+  // Drag and drop from palette to board.
+  // HTML5 drag/drop does NOT fire on iOS Safari touch, and click-to-add was
+  // the only working path on tablets. Now we also wire touchstart/move/end so
+  // students on iPads / touch Chromebooks can drag memes naturally.
   function setupDnD() {
+    let touchSrc = null;
+    let touchGhost = null;
+
+    function makeGhost(card){
+      const img = card.querySelector('img');
+      if (!img) return null;
+      const g = img.cloneNode(true);
+      g.style.position = 'fixed';
+      g.style.pointerEvents = 'none';
+      g.style.opacity = '0.85';
+      g.style.zIndex = '99999';
+      g.style.width = '64px';
+      g.style.height = '64px';
+      g.style.objectFit = 'contain';
+      g.style.transform = 'translate(-50%, -50%)';
+      document.body.appendChild(g);
+      return g;
+    }
+    function moveGhost(g, x, y){
+      if (!g) return;
+      g.style.left = x + 'px';
+      g.style.top = y + 'px';
+    }
+    function clearTouchDrag(){
+      if (touchGhost) { try { touchGhost.remove(); } catch(_){} touchGhost = null; }
+      touchSrc = null;
+      board.removeAttribute('data-dragover');
+      qsa('.meme.dragging', palette).forEach(el => el.classList.remove('dragging'));
+    }
+    function pointOverBoard(x, y){
+      const el = document.elementFromPoint(x, y);
+      return !!(el && (el === board || board.contains(el)));
+    }
+
     qsa('.meme', palette).forEach(card => {
       card.addEventListener('dragstart', (e) => {
         card.classList.add('dragging');
         const src = card.getAttribute('data-src');
         e.dataTransfer.setData('text/plain', src);
-        // drag image ghost
         const img = card.querySelector('img');
         if (img && e.dataTransfer.setDragImage) {
           e.dataTransfer.setDragImage(img, img.naturalWidth/2, img.naturalHeight/2);
         }
       });
       card.addEventListener('dragend', () => card.classList.remove('dragging'));
-      // Click to add (mobile)
+      // Click to add (also covers tap on touch devices that didn't initiate drag).
       card.addEventListener('click', () => placeMeme(card.getAttribute('data-src')));
+
+      // Touch-drag handlers (iOS/Android/touch Chromebooks).
+      card.addEventListener('touchstart', (e) => {
+        if (!e.touches || !e.touches.length) return;
+        touchSrc = card.getAttribute('data-src');
+        card.classList.add('dragging');
+        const t = e.touches[0];
+        touchGhost = makeGhost(card);
+        moveGhost(touchGhost, t.clientX, t.clientY);
+      }, { passive: true });
+      card.addEventListener('touchmove', (e) => {
+        if (!touchSrc || !e.touches || !e.touches.length) return;
+        // Prevent the page from scrolling under the finger while dragging.
+        e.preventDefault();
+        const t = e.touches[0];
+        moveGhost(touchGhost, t.clientX, t.clientY);
+        if (pointOverBoard(t.clientX, t.clientY)) board.setAttribute('data-dragover', '1');
+        else board.removeAttribute('data-dragover');
+      }, { passive: false });
+      card.addEventListener('touchend', (e) => {
+        if (!touchSrc) { clearTouchDrag(); return; }
+        const t = (e.changedTouches && e.changedTouches[0]) || null;
+        if (t && pointOverBoard(t.clientX, t.clientY)) {
+          placeMeme(touchSrc);
+        }
+        clearTouchDrag();
+      });
+      card.addEventListener('touchcancel', clearTouchDrag);
     });
 
     board.addEventListener('dragover', (e) => { e.preventDefault(); board.setAttribute('data-dragover', '1'); });
@@ -587,6 +719,12 @@
   });
 
   nextChallengeBtn.addEventListener('click', () => {
+    // Skipping at higher difficulty counts as incorrect — prevents grinding
+    // for an easy prompt by hammering Skip until a 1:1 appears. At Beginner
+    // and Developing the skip is free (let students explore without penalty).
+    if (challengeDifficulty >= 2) {
+      try { adjustDifficulty(false); } catch (e) {}
+    }
     sharedState.current = generateChallenge(sharedState.mode);
     challengeText.innerHTML = challengeTextFor(sharedState.current);
     updateLayoutForCurrent();
@@ -594,10 +732,14 @@
     resetBoard();
   });
 
-  modeSelect.addEventListener('change', () => {
-    const selected = modeSelect.value;
+  modePills.forEach(pill => pill.addEventListener('click', () => {
+    const selected = pill.dataset.mode;
     sharedState.mode = selected;
-    // If master: choose one of the four types randomly for each challenge
+    modePills.forEach(p => {
+      const isActive = p.dataset.mode === selected;
+      p.classList.toggle('active', isActive);
+      p.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
     if (selected === 'master') {
       const kinds = ['create', 'partpart', 'partwhole', 'equiv'];
       const pick = kinds[Math.floor(Math.random() * kinds.length)];
@@ -609,7 +751,7 @@
     updateLayoutForCurrent();
     broadcastState();
     resetBoard();
-  });
+  }));
 
   shareBtn.addEventListener('click', () => { updateShareUI(); openQr(); });
   closeQrBtn && closeQrBtn.addEventListener('click', closeQr);

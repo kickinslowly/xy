@@ -33,6 +33,8 @@
   const shotColEl = qs('#shotCol');
   const fireBtnEl = qs('#fireBtn');
   const fireMsgEl = qs('#fireMsg');
+  const noobModeEl = qs('#noobMode');
+  const fireSectionEl = qs('.fire-section');
 
   const statsYouEl = qs('#statsYou');
   const yourTeamBadge = qs('#yourTeamBadge');
@@ -83,6 +85,10 @@
       startedBy: null,
       winner: null,
       turn: null, // 'A' or 'B'
+      // Monotonically increasing per-shot counter. Used to reject stale state
+      // echoes (so a slow broadcast can't rewind turn after another shot has
+      // already been applied) and to detect that a concurrent fire happened.
+      shotSeq: 0,
       teams: {
         A: { members: {}, shots: 0, hits: 0, shipsRemaining: 5, shotsLog: [] },
         B: { members: {}, shots: 0, hits: 0, shipsRemaining: 5, shotsLog: [] },
@@ -96,6 +102,11 @@
       lastShot: null, // {team:'A'|'B', r, c, hit:bool}
     };
   }
+  // Local guard: while a shot is in-flight (we just fired but haven't seen the
+  // echo), block additional fire attempts so rapid-clicks don't double-shoot.
+  let _pendingFireUntil = 0;
+  function _isFirePending() { return Date.now() < _pendingFireUntil; }
+  function _markFirePending() { _pendingFireUntil = Date.now() + 800; }
 
   // Initial setup
   (async function init(){
@@ -111,6 +122,12 @@
       singlePlayerToggle.addEventListener('change', () => {
         if (!state) return;
         setSinglePlayer(!!singlePlayerToggle.checked);
+      });
+    }
+
+    if (noobModeEl) {
+      noobModeEl.addEventListener('change', () => {
+        if (fireSectionEl) fireSectionEl.style.display = noobModeEl.checked ? 'none' : '';
       });
     }
 
@@ -150,15 +167,93 @@
     return pin;
   }
 
+  let _presenceCount = 0;
+  // Initialize to "now" rather than 0 so the staleness check doesn't fire on
+  // page load. Bumped further on every shotSeq change AND on phase transitions.
+  let _lastTurnChangeAt = Date.now();
+  let _lastSeenShotSeq = 0;
+  let _lastSeenPhase = null;
   function setPresence(count, online) {
     if (!presenceEl) return;
     if (!online) {
+      _presenceCount = 0;
       presenceEl.textContent = '• Offline';
+      checkOpponentStale();
       return;
     }
     const n = Number(count) || 1;
+    _presenceCount = n;
     presenceEl.textContent = `• ${n} online`;
+    checkOpponentStale();
   }
+
+  // Build (lazily) a banner shown when the opposing team has gone silent for
+  // long enough that the game looks stuck. Lets the student forfeit (counts as
+  // a loss) or fall back to solo vs bot rather than staring at a frozen turn.
+  let _oppBanner = null;
+  function getOppBanner(){
+    if (_oppBanner) return _oppBanner;
+    const el = document.createElement('div');
+    el.id = 'opponentGoneBanner';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9000;background:#1c2230;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,0.35);max-width:calc(100vw - 32px);';
+    el.hidden = true;
+    const txt = document.createElement('span');
+    txt.textContent = 'Opponent disconnected.';
+    txt.style.cssText = 'color:#f59e0b;font-weight:700;font-size:14px;';
+    const forfeitBtn = document.createElement('button');
+    forfeitBtn.type = 'button';
+    forfeitBtn.textContent = 'Forfeit';
+    forfeitBtn.className = 'btn-light';
+    forfeitBtn.addEventListener('click', forfeitToOpponent);
+    const soloBtn = document.createElement('button');
+    soloBtn.type = 'button';
+    soloBtn.textContent = 'Solo vs Bot';
+    soloBtn.className = 'btn-3d';
+    soloBtn.addEventListener('click', () => {
+      try {
+        if (singlePlayerToggle && !singlePlayerToggle.checked) {
+          singlePlayerToggle.checked = true;
+          singlePlayerToggle.dispatchEvent(new Event('change'));
+        }
+      } catch(_){}
+      el.hidden = true;
+    });
+    el.appendChild(txt);
+    el.appendChild(forfeitBtn);
+    el.appendChild(soloBtn);
+    document.body.appendChild(el);
+    _oppBanner = el;
+    return el;
+  }
+  function forfeitToOpponent(){
+    if (!state || state.phase !== 'playing' || !myTeam) return;
+    const enemy = (myTeam === 'A') ? 'B' : 'A';
+    state.winner = enemy;
+    state.phase = 'gameover';
+    state.shotSeq = (state.shotSeq || 0) + 1;
+    try { broadcast(); } catch(_){}
+    try { updateUiFromState(); } catch(_){}
+    if (_oppBanner) _oppBanner.hidden = true;
+  }
+  function checkOpponentStale(){
+    if (!state || state.phase !== 'playing' || !myTeam) {
+      if (_oppBanner) _oppBanner.hidden = true;
+      return;
+    }
+    // Bot is a "fake" presence — solo mode never looks disconnected.
+    if (state.bot && state.bot.enabled) { if (_oppBanner) _oppBanner.hidden = true; return; }
+    const waiting = state.turn && state.turn !== myTeam;
+    const aloneOnline = _presenceCount <= 1;
+    const stalled = (Date.now() - _lastTurnChangeAt) > 12000;
+    if (waiting && aloneOnline && stalled) {
+      getOppBanner().hidden = false;
+    } else if (_oppBanner) {
+      _oppBanner.hidden = true;
+    }
+  }
+  setInterval(checkOpponentStale, 2000);
 
   function setupShareJoinUi() {
     function showQrModalFor(urlStr, pinVal) {
@@ -255,7 +350,15 @@
 
   function applyRemoteState(remote) {
     if (!remote) return;
+    // Reject stale echoes that would rewind turn after we've already fired.
+    // (Concurrent shots from another client may have a higher shotSeq than ours;
+    // those still apply.)
+    const localSeq = (state && typeof state.shotSeq === 'number') ? state.shotSeq : 0;
+    const remoteSeq = (typeof remote.shotSeq === 'number') ? remote.shotSeq : 0;
+    if (state && remoteSeq < localSeq) return;
     state = remote;
+    // Our broadcast has been seen (or a higher-seq one has) — release the local fire-pending lock.
+    _pendingFireUntil = 0;
     // If we already have a server-assigned team, ensure we are listed in that team
     if (myTeam) {
       try {
@@ -296,10 +399,9 @@
         cell.className = 'cell';
         cell.dataset.r = String(r);
         cell.dataset.c = String(c);
-        // Clicking to fire is disabled; use manual coordinate input instead.
-        // if (!isOwn) {
-        //   cell.addEventListener('click', onEnemyCellClick);
-        // }
+        if (!isOwn) {
+          cell.addEventListener('click', onEnemyCellClick);
+        }
         root.appendChild(cell);
       }
     }
@@ -330,8 +432,16 @@
   }
 
   function onEnemyCellClick(e) {
-    // Disabled: use manual inputs to fire
-    pulse(e.currentTarget, 'ping', '⌨️');
+    const r = Number(e.currentTarget.dataset.r);
+    const c = Number(e.currentTarget.dataset.c);
+    if (noobModeEl && noobModeEl.checked) {
+      tryFireAt(r, c);
+    } else {
+      // Fill coordinate inputs so students practice reading coordinates
+      if (shotColEl) shotColEl.value = c + 1;       // X = col + 1
+      if (shotRowEl) shotRowEl.value = 10 - r;       // Y = 10 - row (reversed axis)
+      if (shotColEl) shotColEl.focus();
+    }
   }
 
   function fireFromInputs() {
@@ -340,12 +450,12 @@
     const xStr = (shotColEl.value || '').trim();
     fireMsg('');
     const yNum = Number(yStr);
-    if (!(yNum >= 1 && yNum <= 10)) {
-      return fireMsg('Enter Y 1–10');
+    if (!(Number.isInteger(yNum) && yNum >= 1 && yNum <= 10)) {
+      return fireMsg('Enter whole-number Y from 1–10');
     }
     const xNum = Number(xStr);
-    if (!(xNum >= 1 && xNum <= 10)) {
-      return fireMsg('Enter X 1–10');
+    if (!(Number.isInteger(xNum) && xNum >= 1 && xNum <= 10)) {
+      return fireMsg('Enter whole-number X from 1–10');
     }
     // With Y reversed (1 at bottom), map to row index: r = 10 - Y
     const r = 10 - yNum;
@@ -357,6 +467,7 @@
     if (!state || state.phase !== 'playing') return fireMsg('Game not started');
     if (!myTeam) return fireMsg('Join a team to fire');
     if (state.turn !== myTeam) return fireMsg(`Waiting for Team ${state.turn}`);
+    if (_isFirePending()) return fireMsg('One shot at a time…');
     const enemy = (myTeam === 'A') ? 'B' : 'A';
     if (hasShotAt(state.teams[myTeam].shotsLog, r, c)) {
       return fireMsg('Already fired at that coordinate');
@@ -364,10 +475,12 @@
     const hit = isShipAt(state.boards[enemy].ships, r, c);
     markShot(myTeam, enemy, r, c, hit);
     state.turn = enemy;
+    state.shotSeq = (state.shotSeq || 0) + 1;
     if (isAllSunk(state.boards[enemy].ships)) {
       state.phase = 'gameover';
       state.winner = myTeam;
     }
+    _markFirePending();
     // Update local UI immediately so turn indicator changes without waiting for remote echo
     updateUiFromState();
     broadcast();
@@ -438,6 +551,34 @@
     const remaining = (state.boards[enemy].ships || []).filter(s => !isShipSunk(s)).length;
     state.teams[enemy].shipsRemaining = remaining;
     state.lastShot = { team, r, c, hit };
+    // Sound effects + ship sunk callout
+    try {
+      if (window.SoundFX) {
+        if (hit) {
+          if (before !== undefined && remaining < before) {
+            window.SoundFX.play('sunk');
+            showSunkToast(before - remaining);
+          } else {
+            window.SoundFX.play('hit');
+          }
+        } else {
+          window.SoundFX.play('miss');
+        }
+      }
+    } catch(_){}
+  }
+
+  function showSunkToast(count) {
+    var el = document.createElement('div');
+    el.className = 'sunk-toast';
+    el.setAttribute('role', 'status');
+    el.textContent = 'You sunk a ship!';
+    document.body.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.add('sunk-toast-show'); });
+    setTimeout(function(){
+      el.classList.remove('sunk-toast-show');
+      setTimeout(function(){ el.remove(); }, 400);
+    }, 2500);
   }
 
   // UI glue
@@ -468,6 +609,19 @@
     // Hide lobby bar once the game is starting/started
     if (lobbyPanel) {
       lobbyPanel.style.display = (state.phase === 'lobby') ? '' : 'none';
+    }
+
+    // Track turn changes (for opponent-stale detection). Any seq increment OR
+    // phase change resets the staleness timer — otherwise the banner would
+    // fire 12s after page load on a fresh game with no shots yet.
+    const seqNow = (typeof state.shotSeq === 'number') ? state.shotSeq : 0;
+    if (seqNow !== _lastSeenShotSeq) {
+      _lastTurnChangeAt = Date.now();
+      _lastSeenShotSeq = seqNow;
+    }
+    if (state.phase !== _lastSeenPhase) {
+      _lastTurnChangeAt = Date.now();
+      _lastSeenPhase = state.phase;
     }
 
     // Turn pill: make it very obvious
@@ -586,12 +740,18 @@
       const weWon = (state.winner && myTeam && state.winner === myTeam);
       winnerOverlay.classList.toggle('show', !!weWon);
       loserOverlay.classList.toggle('show', !!(!weWon && myTeam));
-      if (state.winner) {
-        winnerText.textContent = `Team ${state.winner} Wins!`;
-      }
       // Best-effort: post a result one time per gameover per client
       try {
         if (!updateUiFromState._postedResult) {
+          if (weWon) {
+            setWinText();
+            spawnConfetti();
+            try { if (window.SoundFX) window.SoundFX.play('win'); } catch(_){}
+          } else if (myTeam) {
+            setLoseText();
+            spawnRain();
+            try { if (window.SoundFX) window.SoundFX.play('lose'); } catch(_){}
+          }
           const outcome = weWon ? 'win' : (myTeam ? 'lose' : null);
           if (outcome && window.recordResult) {
             window.recordResult({
@@ -608,6 +768,7 @@
     } else {
       winnerOverlay.classList.remove('show');
       loserOverlay.classList.remove('show');
+      clearEffects();
       updateUiFromState._postedResult = false;
     }
 
@@ -776,6 +937,7 @@
       const teamText = myTeam ? `Team ${myTeam}` : '';
       if (turnSubText) turnSubText.textContent = teamText ? `${teamText} — Enter coordinates and press Fire` : 'Enter coordinates and press Fire';
       turnOverlay.classList.add('show');
+      try { if (window.SoundFX) window.SoundFX.play('turn'); } catch(_){}
       setTimeout(() => { try { turnOverlay.classList.remove('show'); } catch(_){} }, 1000);
     } catch(_){}
   }
@@ -921,6 +1083,7 @@
     const r = pick.r, c = pick.c;
     const hit = isShipAt(state.boards[enemy].ships, r, c);
     markShot(botTeam, enemy, r, c, hit);
+    state.shotSeq = (state.shotSeq || 0) + 1;
     state.turn = enemy;
     if (isAllSunk(state.boards[enemy].ships)) { state.phase = 'gameover'; state.winner = botTeam; }
     updateUiFromState();
@@ -969,6 +1132,107 @@
       if (!ok) return placeRandomShips();
     }
     return ships;
+  }
+
+  // ---- Epic win/loss celebration system ----
+  const winSubEl = qs('#winnerSub');
+  const loserTextEl = qs('#loserText');
+  const loserSubEl = qs('#loserSub');
+  const winConfettiEl = qs('#winConfetti');
+  const loseRainEl = qs('#loseRain');
+
+  const WIN_TITLES = [
+    'YOU WIN!!!!',
+    'VICTORY!!!!',
+    'ABSOLUTE DOMINATION!!!!',
+    'LEGENDARY WIN!!!!',
+    'FLAWLESS VICTORY!!!!',
+  ];
+  const WIN_SUBS = [
+    'The enemy fleet is sleeping with the fishes.',
+    'Admiral status: UNLOCKED.',
+    'They never stood a chance.',
+    'You made that look EASY.',
+    'The ocean belongs to you now.',
+    'GOATED. No cap. FR FR.',
+    'The other team is literally crying RN.',
+    'Somebody call the coast guard... for THEM.',
+    'Your strategy was *chef\'s kiss*.',
+    'Unmatched. Unstoppable. Unhinged.',
+  ];
+  const LOSE_TITLES = [
+    'YOU LOST!',
+    'DEFEATED!',
+    'SUNK!',
+    'OBLITERATED!',
+    'GAME OVER!',
+  ];
+  const LOSE_SUBS = [
+    'Your ships are now artificial reefs.',
+    'Even your rubber ducky is embarrassed.',
+    'Somewhere, a bot is laughing at you.',
+    'F in the chat.',
+    'This is the saddest thing since Titanic.',
+    'Task failed successfully?',
+    'Don\'t worry, nobody saw that. (Everyone saw that.)',
+    'Your fleet said "aight imma head out."',
+    'You fought bravely. You just also fought badly.',
+    'Plot twist: the ships were the friends we lost along the way.',
+    'That was... a choice.',
+    'Certified bruh moment.',
+  ];
+  const LOSE_BTNS = ['Womp womp', 'Pain.', 'I\'m fine. This is fine.', 'Cry about it', 'Try not to cry'];
+
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function setWinText() {
+    if (winnerText) winnerText.textContent = pick(WIN_TITLES);
+    if (winSubEl) winSubEl.textContent = pick(WIN_SUBS);
+  }
+
+  function setLoseText() {
+    if (loserTextEl) loserTextEl.textContent = pick(LOSE_TITLES);
+    if (loserSubEl) loserSubEl.textContent = pick(LOSE_SUBS);
+    if (okLoserBtn) okLoserBtn.textContent = pick(LOSE_BTNS);
+  }
+
+  function spawnConfetti() {
+    if (!winConfettiEl) return;
+    winConfettiEl.innerHTML = '';
+    const colors = ['#ffd700','#ff6b35','#ff1744','#00e676','#2979ff','#e040fb','#00e5ff','#ffea00'];
+    const shapes = ['square','circle'];
+    for (let i = 0; i < 80; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      el.style.width = (6 + Math.random() * 8) + 'px';
+      el.style.height = (6 + Math.random() * 8) + 'px';
+      if (shapes[Math.floor(Math.random() * shapes.length)] === 'circle') el.style.borderRadius = '50%';
+      el.style.animationDuration = (2 + Math.random() * 3) + 's';
+      el.style.animationDelay = (Math.random() * 2) + 's';
+      winConfettiEl.appendChild(el);
+    }
+  }
+
+  function spawnRain() {
+    if (!loseRainEl) return;
+    loseRainEl.innerHTML = '';
+    for (let i = 0; i < 60; i++) {
+      const el = document.createElement('div');
+      el.className = 'rain-drop';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.height = (15 + Math.random() * 25) + 'px';
+      el.style.animationDuration = (0.5 + Math.random() * 0.8) + 's';
+      el.style.animationDelay = (Math.random() * 2) + 's';
+      el.style.opacity = 0.3 + Math.random() * 0.4;
+      loseRainEl.appendChild(el);
+    }
+  }
+
+  function clearEffects() {
+    if (winConfettiEl) winConfettiEl.innerHTML = '';
+    if (loseRainEl) loseRainEl.innerHTML = '';
   }
 
 })();

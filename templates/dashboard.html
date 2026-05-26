@@ -9,6 +9,66 @@
     <p id="auth-note" class="muted">Sign in with Google to load your data.</p>
 
     <div id="dash" hidden>
+      <!-- Player stats banner -->
+      <div id="xpBanner" class="card xp-banner" hidden>
+        <div class="xp-banner-row">
+          <!-- Streak -->
+          <div class="dash-streak" id="dashStreakWrap">
+            <span class="dash-streak-fire" id="dashStreakFire">&#128293;</span>
+            <span class="dash-streak-num" id="dashStreakNum">0</span>
+            <span class="dash-streak-label" id="dashStreakLabel">day streak</span>
+          </div>
+          <div class="xp-banner-divider"></div>
+          <!-- XP -->
+          <div class="xp-banner-level">
+            <span class="xp-lvl-num" id="dashLevel">0</span>
+            <span class="xp-lvl-title" id="dashTitle">Math Rookie</span>
+          </div>
+          <div class="xp-banner-bar">
+            <div class="xp-banner-track">
+              <div class="xp-banner-fill" id="dashXpFill" style="width:0%"></div>
+            </div>
+            <span class="xp-banner-text" id="dashXpText">0 / 100 XP</span>
+          </div>
+          <span class="xp-banner-total" id="dashXpTotal">0 XP</span>
+          <div class="xp-banner-divider"></div>
+          <!-- Daily Goal -->
+          <div class="dash-daily" id="dashDailyWrap">
+            <span class="dash-daily-count" id="dashDailyCount">0</span>
+            <span class="dash-daily-label" id="dashDailyLabel">/ 5 today</span>
+          </div>
+          <div class="xp-banner-divider"></div>
+          <!-- Coins -->
+          <a href="{{ url_for('shop_page') }}" class="dash-coins" id="dashCoinsWrap">
+            <span class="dash-coins-icon">&#x1FA99;</span>
+            <span class="dash-coins-amount" id="dashCoinsAmount">0</span>
+            <span class="dash-coins-label">coins</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Daily Quests -->
+      <div id="dashQuestsWrap" class="card dash-quests-card" hidden>
+        <div class="dash-quests-header">
+          <h2>Daily Quests</h2>
+          <span class="dash-quests-badge" id="dashQuestsBadge" hidden>All Complete!</span>
+        </div>
+        <div class="dash-quests-list" id="dashQuestsList"></div>
+      </div>
+
+      <!-- Standards Mastery -->
+      <div id="standardsCard" class="card dash-standards-card" hidden>
+        <div class="dash-standards-header">
+          <h2>Math Skills</h2>
+          <span class="dash-standards-summary" id="standardsSummary"></span>
+        </div>
+        <div class="dash-strands" id="strandsGrid"></div>
+        <details class="dash-standards-details">
+          <summary class="dash-standards-toggle">View all standards</summary>
+          <div class="dash-standards-list" id="standardsList"></div>
+        </details>
+      </div>
+
       <div class="cards-grid">
         <div class="card">
           <h2>SIGMA SUMMARY</h2>
@@ -59,6 +119,11 @@
       renderPerMode(data.per_mode || {});
       renderRecent(data.recent || []);
       renderAchievements(data.achievements || []);
+      renderXp(data.xp);
+      renderStreak(data.streak);
+      renderQuests(data.quests);
+      renderCoins(data.coins);
+      renderStandards(data.standards, data.strands);
     }catch(e){
       console.error(e);
       authNote.textContent = 'Network error.';
@@ -69,9 +134,9 @@
   function renderPerMode(map){
     const root = document.getElementById('perMode');
     root.innerHTML = '';
-    const order = ['plane','battleship','memewars','memedash','ratios'];
-    const LABELS = { plane: 'Coordinate Plane', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
-    const ICONS  = { plane: '🧭', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
+    const order = ['plane','line','battleship','memewars','memedash','ratios'];
+    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
+    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
     order.forEach(m => {
       const s = map[m] || {};
       const div = document.createElement('div');
@@ -142,6 +207,129 @@
     });
   }
 
+  function renderXp(xp){
+    const banner = document.getElementById('xpBanner');
+    if (!xp || !banner) return;
+    banner.hidden = false;
+    document.getElementById('dashLevel').textContent = xp.level;
+    document.getElementById('dashTitle').textContent = xp.title || '';
+    document.getElementById('dashXpTotal').textContent = (xp.total_xp || 0).toLocaleString() + ' XP';
+    const pct = xp.xp_needed > 0 ? Math.min(100, Math.round(xp.xp_in_level / xp.xp_needed * 100)) : 100;
+    document.getElementById('dashXpFill').style.width = pct + '%';
+    document.getElementById('dashXpText').textContent = xp.xp_in_level + ' / ' + xp.xp_needed + ' XP';
+  }
+
+  function renderStreak(streak){
+    if (!streak) return;
+    const fire = document.getElementById('dashStreakFire');
+    const num = document.getElementById('dashStreakNum');
+    const label = document.getElementById('dashStreakLabel');
+    if (num) num.textContent = streak.streak;
+    if (fire) fire.style.opacity = streak.streak > 0 ? '1' : '0.3';
+    if (label) {
+      if (streak.streak === 0) label.textContent = 'no streak';
+      else if (!streak.played_today) label.textContent = 'play today!';
+      else label.textContent = 'day streak';
+    }
+    const daily = document.getElementById('dashDailyCount');
+    const dLabel = document.getElementById('dashDailyLabel');
+    if (daily) daily.textContent = streak.games_today;
+    if (dLabel) {
+      if (streak.daily_goal_met) dLabel.textContent = 'goal met!';
+      else dLabel.textContent = '/ ' + streak.daily_goal + ' today';
+    }
+  }
+
+  function renderQuests(qData){
+    if (!qData || !qData.quests || !qData.quests.length) return;
+    const wrap = document.getElementById('dashQuestsWrap');
+    const list = document.getElementById('dashQuestsList');
+    const badge = document.getElementById('dashQuestsBadge');
+    if (!wrap || !list) return;
+    wrap.hidden = false;
+    if (qData.all_completed && badge) badge.hidden = false;
+
+    list.innerHTML = qData.quests.map(function(q){
+      var pct = Math.round(q.progress * 100);
+      var cls = q.completed ? ' dq-done' : '';
+      return '<div class="dq-row' + cls + '">' +
+        '<span class="dq-icon">' + q.icon + '</span>' +
+        '<div class="dq-body">' +
+          '<span class="dq-label">' + q.label + '</span>' +
+          '<div class="dq-bar"><div class="dq-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>' +
+        '<span class="dq-progress">' + q.current + '/' + q.target + '</span>' +
+        '<span class="dq-check">' + (q.completed ? '\u2705' : '') + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderCoins(coins){
+    var el = document.getElementById('dashCoinsAmount');
+    if (el && coins !== undefined) el.textContent = (coins || 0).toLocaleString();
+  }
+
+  function renderStandards(standards, strands){
+    var card = document.getElementById('standardsCard');
+    if (!card || !standards || !standards.length) return;
+    card.hidden = false;
+
+    var attempted = standards.filter(function(s){ return s.attempted; }).length;
+    var total = standards.length;
+    var summaryEl = document.getElementById('standardsSummary');
+    if (summaryEl) summaryEl.textContent = attempted + ' of ' + total + ' skills explored';
+
+    // Render strand summary cards
+    var strandsGrid = document.getElementById('strandsGrid');
+    if (strandsGrid && strands && strands.length) {
+      var STRAND_ICONS = {
+        'Geometry': '\uD83D\uDCD0',
+        'Ratios & Proportional Relationships': '\u2696\uFE0F',
+        'The Number System': '\uD83D\uDD22',
+        'Expressions & Equations': '\uD83D\uDCDD',
+        'Functions': '\uD83D\uDCC8',
+      };
+      strandsGrid.innerHTML = strands.map(function(st){
+        var pct = Math.round(st.avg_mastery * 100);
+        var icon = STRAND_ICONS[st.strand] || '\uD83C\uDFAF';
+        var barColor = pct >= 70 ? 'var(--green, #22c55e)' : pct >= 40 ? 'var(--amber, #f59e0b)' : 'var(--accent)';
+        return '<div class="strand-card">' +
+          '<div class="strand-header"><span class="strand-icon">' + icon + '</span> ' + st.strand + '</div>' +
+          '<div class="strand-stats">' + st.attempted + '/' + st.total + ' skills</div>' +
+          '<div class="strand-bar"><div class="strand-bar-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
+          '<div class="strand-pct">' + pct + '% mastery</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // Render individual standards
+    var listEl = document.getElementById('standardsList');
+    if (!listEl) return;
+    // Group by grade
+    var byGrade = {};
+    standards.forEach(function(s){
+      var g = s.grade || 5;
+      if (!byGrade[g]) byGrade[g] = [];
+      byGrade[g].push(s);
+    });
+    var html = '';
+    Object.keys(byGrade).sort().forEach(function(grade){
+      html += '<div class="std-grade-group"><h4>Grade ' + grade + '</h4>';
+      byGrade[grade].forEach(function(s){
+        var pct = Math.round(s.mastery * 100);
+        var cls = s.attempted ? (pct >= 70 ? 'std-strong' : pct >= 40 ? 'std-growing' : 'std-new') : 'std-unstarted';
+        html += '<div class="std-row ' + cls + '">' +
+          '<span class="std-code">' + s.code + '</span>' +
+          '<span class="std-name">' + s.name + '</span>' +
+          '<div class="std-bar"><div class="std-bar-fill" style="width:' + pct + '%"></div></div>' +
+          '<span class="std-pct">' + (s.attempted ? pct + '%' : '—') + '</span>' +
+        '</div>';
+      });
+      html += '</div>';
+    });
+    listEl.innerHTML = html;
+  }
+
   document.addEventListener('DOMContentLoaded', loadDashboard);
   document.addEventListener('app:auth', loadDashboard);
   document.addEventListener('app:logout', loadDashboard);
@@ -149,6 +337,103 @@
 })();
 </script>
 <style>
+/* XP Banner */
+.xp-banner {
+  margin-bottom: var(--gap-lg);
+  background: linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--accent) 8%, var(--surface)) 100%);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+.xp-banner-row {
+  display: flex; align-items: center; gap: var(--gap-lg); flex-wrap: wrap;
+}
+.xp-banner-level {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.xp-lvl-num {
+  font-size: 28px; font-weight: 900; color: var(--accent);
+  min-width: 48px; text-align: center;
+}
+.xp-lvl-title {
+  font-size: 14px; font-weight: 700; color: var(--text-muted);
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px;
+}
+.xp-banner-bar { flex: 1; min-width: 160px; }
+.xp-banner-track {
+  height: 10px; background: var(--surface-2); border-radius: 999px;
+  overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+.xp-banner-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #7a5cff, #ff4da6, #36d1ff);
+  background-size: 200% 100%;
+  transition: width 0.6s ease;
+  animation: xpShimmer 3s linear infinite;
+}
+@keyframes xpShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.xp-banner-text {
+  font-size: 12px; color: var(--text-muted); display: block; margin-top: 3px;
+}
+.xp-banner-total {
+  font-size: 16px; font-weight: 800; color: var(--text); white-space: nowrap;
+}
+
+/* Streak in banner */
+.dash-streak {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.dash-streak-fire { font-size: 24px; line-height: 1; }
+.dash-streak-num { font-size: 24px; font-weight: 900; color: var(--text); }
+.dash-streak-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.xp-banner-divider { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
+
+/* Daily goal in banner */
+.dash-daily {
+  display: flex; align-items: baseline; gap: 4px; flex-shrink: 0;
+}
+.dash-daily-count { font-size: 22px; font-weight: 900; color: var(--accent); }
+.dash-daily-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+/* Coins in banner */
+.dash-coins {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  text-decoration: none; color: var(--text);
+  transition: opacity 0.2s ease;
+}
+.dash-coins:hover { opacity: 0.8; text-decoration: none; }
+.dash-coins-icon { font-size: 20px; }
+.dash-coins-amount { font-size: 20px; font-weight: 900; color: #f59e0b; }
+.dash-coins-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+/* Dashboard Quests */
+.dash-quests-card { margin-bottom: var(--gap-lg); }
+.dash-quests-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.dash-quests-header h2 { margin: 0; }
+.dash-quests-badge {
+  font-size: 11px; font-weight: 800; color: #22c55e;
+  background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3);
+  padding: 2px 10px; border-radius: 999px; text-transform: uppercase;
+}
+.dash-quests-list { display: grid; gap: 6px; }
+.dq-row {
+  display: grid; grid-template-columns: 32px 1fr auto auto;
+  align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.dq-row.dq-done {
+  border-color: rgba(34,197,94,0.3);
+  background: color-mix(in srgb, #22c55e 6%, var(--surface-2));
+}
+.dq-icon { font-size: 20px; text-align: center; }
+.dq-body { min-width: 0; }
+.dq-label { font-size: 13px; font-weight: 700; color: var(--text); display: block; margin-bottom: 4px; }
+.dq-row.dq-done .dq-label { color: #22c55e; }
+.dq-bar { height: 5px; background: var(--surface); border-radius: 999px; overflow: hidden; }
+.dq-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #7a5cff, #4cc9f0); transition: width 0.4s ease; }
+.dq-row.dq-done .dq-bar-fill { background: linear-gradient(90deg, #22c55e, #4cc9f0); }
+.dq-progress { font-size: 12px; font-weight: 800; color: var(--text-muted); }
+.dq-check { font-size: 16px; min-width: 20px; text-align: center; }
+
 /* Page background with playful, subtle gradients (respects dark/light tokens) */
 body.page-dashboard {
   background:
@@ -234,11 +519,68 @@ body.page-dashboard {
 .achv-count { min-width: 62px; text-align: right; font-weight: 800; color: var(--text); }
 @keyframes achv-shine { 0% { filter: brightness(1); } 50% { filter: brightness(1.25); } 100% { filter: brightness(1); } }
 
+/* Standards Mastery Card */
+.dash-standards-card { margin-bottom: var(--gap-lg); }
+.dash-standards-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.dash-standards-header h2 { margin: 0; }
+.dash-standards-summary {
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  padding: 3px 12px; border-radius: 999px;
+}
+
+/* Strand summary cards */
+.dash-strands {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.strand-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.strand-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.strand-header { font-weight: 800; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.strand-icon { font-size: 16px; }
+.strand-stats { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+.strand-bar { height: 6px; background: var(--surface); border-radius: 999px; overflow: hidden; }
+.strand-bar-fill { height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+.strand-pct { font-size: 12px; font-weight: 800; margin-top: 4px; }
+
+/* Individual standards list (collapsible) */
+.dash-standards-details { margin-top: 4px; }
+.dash-standards-toggle {
+  cursor: pointer; font-size: 13px; font-weight: 700; color: var(--accent);
+  padding: 6px 0; user-select: none;
+}
+.dash-standards-toggle:hover { text-decoration: underline; }
+.std-grade-group { margin-top: 12px; }
+.std-grade-group h4 { font-size: 13px; font-weight: 800; color: var(--text-muted); margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+.std-row {
+  display: grid; grid-template-columns: 80px 1fr 100px 40px;
+  align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px;
+  font-size: 12px; border-left: 3px solid var(--border);
+  margin-bottom: 2px;
+}
+.std-row.std-strong { border-left-color: #22c55e; }
+.std-row.std-growing { border-left-color: #f59e0b; }
+.std-row.std-new { border-left-color: var(--accent); }
+.std-row.std-unstarted { opacity: 0.5; }
+.std-code { font-weight: 800; color: var(--text-muted); font-family: monospace; font-size: 11px; }
+.std-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.std-bar { height: 5px; background: var(--surface); border-radius: 999px; overflow: hidden; }
+.std-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #22c55e); transition: width 0.4s ease; }
+.std-pct { font-weight: 800; text-align: right; font-size: 11px; }
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .permode-card { transition: none; }
   .permode-card:hover { transform: none; box-shadow: none; }
   .achievement.unlocked .achv-bar-fill { animation: none; }
+  .strand-card { transition: none; }
+  .strand-card:hover { transform: none; }
 }
 </style>
 {% endblock %}

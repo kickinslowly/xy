@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+{% block title %}Shop — Mr. A's Math Tools{% endblock %}
+{% block body_class %}page-shop{% endblock %}
+
+{% block content %}
+<section class="shop-hero">
+  <div class="container">
+    <h1 class="shop-title">Shop</h1>
+    <p class="shop-sub">Spend your hard-earned coins on titles, themes, and frames.</p>
+    <div class="coin-balance" id="coinBalance" hidden>
+      <span class="coin-icon">&#x1FA99;</span>
+      <span class="coin-amount" id="coinAmount">0</span>
+    </div>
+  </div>
+</section>
+
+<section class="shop-tabs container" id="shopTabs">
+  <button class="shop-tab active" data-cat="all">All</button>
+  <button class="shop-tab" data-cat="title">Titles</button>
+  <button class="shop-tab" data-cat="board_theme">Themes</button>
+  <button class="shop-tab" data-cat="avatar_frame">Frames</button>
+  <button class="shop-tab" data-cat="owned">My Items</button>
+</section>
+
+<section class="shop-grid-wrap container">
+  <div class="shop-grid" id="shopGrid">
+    <div class="shop-loading" id="shopLoading">
+      <p>Sign in to browse the shop</p>
+    </div>
+  </div>
+</section>
+
+<!-- Purchase confirmation modal — focus trap + Escape close handled by base.html modal a11y controller -->
+<div class="modal shop-modal-overlay" id="buyModal" hidden role="dialog" aria-modal="true" aria-labelledby="modalName" tabindex="-1">
+  <div class="shop-modal">
+    <div class="shop-modal-icon" id="modalIcon" aria-hidden="true"></div>
+    <h2 class="shop-modal-name" id="modalName"></h2>
+    <p class="shop-modal-desc" id="modalDesc"></p>
+    <div class="shop-modal-rarity" id="modalRarity"></div>
+    <div class="shop-modal-price">
+      <span class="coin-icon" aria-hidden="true">&#x1FA99;</span>
+      <span id="modalPrice">0</span>
+    </div>
+    <div class="shop-modal-actions">
+      <button class="btn-3d shop-buy-btn" id="modalBuyBtn" type="button">Buy Now</button>
+      <button class="btn-light" id="modalCancelBtn" type="button">Cancel</button>
+    </div>
+    <div class="shop-modal-msg" id="modalMsg" role="status" aria-live="polite" hidden></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ===== Shop Page ===== */
+body.page-shop {
+  background:
+    radial-gradient(1200px 800px at 20% -10%, rgba(248,158,11,0.18), transparent 55%),
+    radial-gradient(1000px 700px at 80% 110%, rgba(168,85,247,0.15), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+.shop-hero {
+  text-align: center;
+  padding: clamp(28px, 5vw, 56px) 0 clamp(12px, 2vw, 24px);
+}
+.shop-title {
+  font-size: clamp(32px, 7vw, 56px);
+  font-weight: 900;
+  margin: 0;
+  background: linear-gradient(135deg, #f59e0b 0%, #a855f7 50%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.shop-sub {
+  font-size: clamp(14px, 2vw, 18px);
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
+.coin-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.coin-icon { font-size: 24px; }
+.coin-amount {
+  font-size: 24px;
+  font-weight: 900;
+  color: #f59e0b;
+}
+
+/* Tabs */
+.shop-tabs {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.shop-tabs::-webkit-scrollbar { display: none; }
+.shop-tab {
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.shop-tab:hover { border-color: var(--accent); color: var(--text); }
+.shop-tab.active {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Grid */
+.shop-grid-wrap { padding-bottom: 48px; }
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: clamp(12px, 2vw, 20px);
+}
+.shop-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 48px 0;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+/* Item Card */
+.shop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(14px, 2vw, 20px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.shop-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.2);
+}
+.shop-item.owned {
+  border-color: color-mix(in srgb, var(--item-rarity, #9ca3af) 40%, transparent);
+}
+.shop-item.equipped {
+  border-color: var(--item-rarity, #9ca3af);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--item-rarity) 30%, transparent);
+}
+
+.shop-item-icon {
+  font-size: 36px;
+  text-align: center;
+  padding: 8px 0;
+}
+.shop-item-name {
+  font-size: 15px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--text);
+}
+.shop-item-rarity {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--item-rarity, #9ca3af);
+}
+.shop-item-price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #f59e0b;
+}
+.shop-item-price .coin-icon { font-size: 16px; }
+
+.shop-item-status {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  align-self: center;
+}
+.shop-item-status.status-owned {
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  color: #22c55e;
+  border: 1px solid rgba(34,197,94,0.3);
+}
+.shop-item-status.status-equipped {
+  background: color-mix(in srgb, #a855f7 15%, transparent);
+  color: #a855f7;
+  border: 1px solid rgba(168,85,247,0.4);
+}
+.shop-item-status.status-locked {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* Rarity shimmer on hover */
+.shop-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--item-rarity, #9ca3af) 10%, transparent), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.shop-item:hover::before { opacity: 1; }
+
+/* Legendary shimmer animation */
+.shop-item.rarity-legendary {
+  animation: legendaryPulse 3s ease-in-out infinite alternate;
+}
+@keyframes legendaryPulse {
+  0% { box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 rgba(245,158,11,0); }
+  100% { box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 20px rgba(245,158,11,0.15); }
+}
+
+/* Purchase Modal */
+.shop-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.shop-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 20px);
+  padding: clamp(24px, 4vw, 40px);
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.shop-modal-icon { font-size: 56px; margin-bottom: 8px; }
+.shop-modal-name {
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0 0 4px;
+}
+.shop-modal-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+.shop-modal-rarity {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.shop-modal-price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 28px;
+  font-weight: 900;
+  color: #f59e0b;
+  margin-bottom: 20px;
+}
+.shop-modal-price .coin-icon { font-size: 28px; }
+.shop-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.shop-buy-btn {
+  padding: 10px 28px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.shop-modal-msg {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm, 12px);
+}
+.shop-modal-msg.msg-success {
+  color: #22c55e;
+  background: rgba(34,197,94,0.12);
+}
+.shop-modal-msg.msg-error {
+  color: #ef4444;
+  background: rgba(239,68,68,0.12);
+}
+
+/* Entrance animation */
+@media (prefers-reduced-motion: no-preference) {
+  .shop-item {
+    animation: shopCardIn 0.3s ease both;
+  }
+  @keyframes shopCardIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+</style>
+
+<script>
+(function(){
+  const grid = document.getElementById('shopGrid');
+  const loading = document.getElementById('shopLoading');
+  const balanceEl = document.getElementById('coinBalance');
+  const amountEl = document.getElementById('coinAmount');
+  const tabs = document.querySelectorAll('.shop-tab');
+  const modal = document.getElementById('buyModal');
+  const modalIcon = document.getElementById('modalIcon');
+  const modalName = document.getElementById('modalName');
+  const modalDesc = document.getElementById('modalDesc');
+  const modalRarity = document.getElementById('modalRarity');
+  const modalPrice = document.getElementById('modalPrice');
+  const modalBuyBtn = document.getElementById('modalBuyBtn');
+  const modalCancelBtn = document.getElementById('modalCancelBtn');
+  const modalMsg = document.getElementById('modalMsg');
+
+  let allItems = [];
+  let currentCoins = 0;
+  let activeTab = 'all';
+  let selectedItem = null;
+
+  // Tab switching
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      activeTab = tab.dataset.cat;
+      renderItems();
+    });
+  });
+
+  function renderItems() {
+    var filtered = allItems;
+    if (activeTab === 'owned') {
+      filtered = allItems.filter(function(i) { return i.owned; });
+    } else if (activeTab !== 'all') {
+      filtered = allItems.filter(function(i) { return i.category === activeTab; });
+    }
+
+    if (!filtered.length) {
+      grid.innerHTML = '<div class="shop-loading"><p>' +
+        (activeTab === 'owned' ? 'No items yet! Play games to earn coins.' : 'No items in this category.') +
+        '</p></div>';
+      return;
+    }
+
+    grid.innerHTML = filtered.map(function(item, idx) {
+      var statusHtml = '';
+      var statusClass = '';
+      if (item.equipped) {
+        statusHtml = '<div class="shop-item-status status-equipped">Equipped</div>';
+        statusClass = ' equipped';
+      } else if (item.owned) {
+        statusHtml = '<div class="shop-item-status status-owned">Owned</div>';
+        statusClass = ' owned';
+      } else if (!item.can_afford) {
+        statusHtml = '<div class="shop-item-status status-locked">Need more coins</div>';
+      }
+
+      var priceHtml = item.owned
+        ? statusHtml
+        : '<div class="shop-item-price"><span class="coin-icon">&#x1FA99;</span>' + item.price + '</div>' + statusHtml;
+
+      return '<div class="shop-item rarity-' + item.rarity + statusClass + '" ' +
+        'style="--item-rarity:' + item.rarity_color + ';animation-delay:' + (idx * 0.03) + 's" ' +
+        'data-item-id="' + item.id + '">' +
+        '<div class="shop-item-icon">' + item.icon + '</div>' +
+        '<div class="shop-item-name">' + item.name + '</div>' +
+        '<div class="shop-item-rarity" style="color:' + item.rarity_color + '">' + item.rarity + '</div>' +
+        priceHtml +
+        '</div>';
+    }).join('');
+
+    // Click handlers
+    grid.querySelectorAll('.shop-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var id = parseInt(el.dataset.itemId);
+        var item = allItems.find(function(i) { return i.id === id; });
+        if (item) handleItemClick(item);
+      });
+    });
+  }
+
+  function handleItemClick(item) {
+    selectedItem = item;
+    modalIcon.textContent = item.icon;
+    modalName.textContent = item.name;
+    modalDesc.textContent = item.description || '';
+    modalRarity.textContent = item.rarity;
+    modalRarity.style.color = item.rarity_color;
+    modalPrice.textContent = item.price;
+    modalMsg.hidden = true;
+
+    if (item.owned) {
+      modalBuyBtn.textContent = item.equipped ? 'Unequip' : 'Equip';
+      modalBuyBtn.onclick = function() { toggleEquip(item); };
+      // Hide price for owned items
+      document.querySelector('.shop-modal-price').style.display = item.owned ? 'none' : '';
+    } else {
+      modalBuyBtn.textContent = 'Buy Now';
+      modalBuyBtn.disabled = !item.can_afford;
+      modalBuyBtn.onclick = function() { buyItem(item); };
+      document.querySelector('.shop-modal-price').style.display = '';
+    }
+
+    modal.hidden = false;
+  }
+
+  async function buyItem(item) {
+    modalBuyBtn.disabled = true;
+    modalBuyBtn.textContent = 'Buying...';
+    try {
+      var token = localStorage.getItem('token');
+      var r = await fetch('/api/shop/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ item_id: item.id })
+      });
+      var data = await r.json();
+      if (r.ok && data.ok) {
+        item.owned = true;
+        item.can_afford = true;
+        currentCoins = data.coins_remaining;
+        amountEl.textContent = currentCoins.toLocaleString();
+        // Update can_afford for all items
+        allItems.forEach(function(i) { i.can_afford = currentCoins >= i.price; });
+        showMsg('Purchased ' + item.name + '!', 'success');
+        modalBuyBtn.textContent = 'Equip';
+        modalBuyBtn.onclick = function() { toggleEquip(item); };
+        document.querySelector('.shop-modal-price').style.display = 'none';
+        renderItems();
+      } else {
+        showMsg(data.error === 'insufficient_coins' ? 'Not enough coins!' : (data.error || 'Purchase failed'), 'error');
+        modalBuyBtn.textContent = 'Buy Now';
+        modalBuyBtn.disabled = false;
+      }
+    } catch(e) {
+      showMsg('Network error', 'error');
+      modalBuyBtn.textContent = 'Buy Now';
+      modalBuyBtn.disabled = false;
+    }
+  }
+
+  async function toggleEquip(item) {
+    var newState = !item.equipped;
+    modalBuyBtn.disabled = true;
+    try {
+      var token = localStorage.getItem('token');
+      var r = await fetch('/api/shop/equip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ item_id: item.id, equip: newState })
+      });
+      var data = await r.json();
+      if (r.ok && data.ok) {
+        // Unequip others in same category
+        if (newState) {
+          allItems.forEach(function(i) {
+            if (i.category === item.category && i.id !== item.id) i.equipped = false;
+          });
+        }
+        item.equipped = newState;
+        showMsg(newState ? 'Equipped ' + item.name + '!' : 'Unequipped ' + item.name, 'success');
+        modalBuyBtn.textContent = item.equipped ? 'Unequip' : 'Equip';
+        modalBuyBtn.disabled = false;
+        renderItems();
+      } else {
+        showMsg(data.error || 'Failed', 'error');
+        modalBuyBtn.disabled = false;
+      }
+    } catch(e) {
+      showMsg('Network error', 'error');
+      modalBuyBtn.disabled = false;
+    }
+  }
+
+  function showMsg(text, type) {
+    modalMsg.textContent = text;
+    modalMsg.className = 'shop-modal-msg msg-' + type;
+    modalMsg.hidden = false;
+  }
+
+  // Close modal
+  modalCancelBtn.addEventListener('click', function() { modal.hidden = true; });
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  async function loadShop() {
+    var token = localStorage.getItem('token');
+    if (!token) {
+      loading.innerHTML = '<p>Sign in to browse the shop</p>';
+      return;
+    }
+    loading.innerHTML = '<p>Loading...</p>';
+    try {
+      var r = await fetch('/api/shop', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!r.ok) throw new Error('Failed');
+      var data = await r.json();
+      allItems = data.items;
+      currentCoins = data.coins;
+      amountEl.textContent = currentCoins.toLocaleString();
+      balanceEl.hidden = false;
+      renderItems();
+    } catch(e) {
+      loading.innerHTML = '<p>Failed to load shop. Try refreshing.</p>';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadShop);
+  document.addEventListener('app:auth', loadShop);
+})();
+</script>
+{% endblock %}

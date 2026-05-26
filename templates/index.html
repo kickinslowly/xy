@@ -1,134 +1,115 @@
 {% extends "base.html" %}
 {% block title %}Interactive Coordinate Plane{% endblock %}
-{% block body_class %}mode-plane{% endblock %}
+{% block body_class %}mode-game mode-plane{% endblock %}
 {% block extra_head %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}" />
 {% endblock %}
 
 {% block content %}
   <header class="app-header full-bleed" role="banner">
-    <nav class="toolbar panels" aria-label="Canvas controls">
-      <div class="toolbar-left">
+    <nav class="toolbar panels plane-toolbar" aria-label="Canvas controls">
+      <div class="plane-toolbar-left">
         <details class="panel panel-sm">
-          <summary>Session</summary>
-          <div class="group" role="group" aria-label="Session">
-            <span id="presence" title="Number of users currently online in this document">• Offline</span>
-            <button id="shareSessionBtn" class="btn btn-secondary" type="button" title="Show and copy PIN to share">Share</button>
-            <button id="joinSessionBtn" class="btn btn-secondary" type="button" title="Join another session by PIN">Join another session</button>
-          </div>
-        </details>
-        <details class="panel panel-sm">
-          <summary>View</summary>
-          <div class="group" role="group" aria-label="View controls">
-            <button id="zoomOut" type="button" title="Zoom out (-)" aria-label="Zoom out">−</button>
-            <button id="zoomIn" type="button" title="Zoom in (+)" aria-label="Zoom in">+</button>
-            <label for="ppu">
-              Pixels per unit:
-            </label>
-            <input id="ppu" type="number" min="5" max="400" step="1" value="50" aria-label="Pixels per unit" />
-            <label for="gridStep">Grid step (units):</label>
-            <select id="gridStep" aria-label="Grid step">
-              <option value="0.5">0.5</option>
-              <option value="1" selected>1</option>
-              <option value="2">2</option>
-              <option value="5">5</option>
-              <option value="10">10</option>
-            </select>
+          <summary title="Settings"><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1.1em;height:1.1em;"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="2"/></svg>Settings</summary>
+          <div class="settings-sections">
+            <div class="group" role="group" aria-label="View controls">
+              <strong class="group-label">View</strong>
+              <div class="settings-row">
+                <button id="zoomOut" type="button" title="Zoom out (-)" aria-label="Zoom out" class="btn-light btn-icon">−</button>
+                <button id="zoomIn" type="button" title="Zoom in (+)" aria-label="Zoom in" class="btn-light btn-icon">+</button>
+                <label class="lbl-sm">PPU <input id="ppu" type="number" min="5" max="400" step="1" value="50" class="input-xs" aria-label="Pixels per unit" /></label>
+                <label class="lbl-sm">Grid
+                  <select id="gridStep" aria-label="Grid step">
+                    <option value="0.5">0.5</option>
+                    <option value="1" selected>1</option>
+                    <option value="2">2</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="group" role="group" aria-label="Session">
+              <strong class="group-label">Session</strong>
+              <div class="settings-row">
+                <span id="presence" title="Users online">• Offline</span>
+                <button id="shareSessionBtn" class="btn-light" type="button">Share</button>
+                <button id="joinSessionBtn" class="btn-light" type="button">Join</button>
+              </div>
+            </div>
           </div>
         </details>
       </div>
-      <div class="toolbar-center">
+
+      <div class="plane-toolbar-center">
         <details class="panel">
           <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>Vertices</summary>
           <div class="group" role="group" aria-label="Vertex settings">
-            <label for="vertexColor">Vertex color:</label>
-            <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" />
-            <label for="vertexSize">Vertex size:</label>
-            <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" aria-label="Vertex size" />
+            <label class="lbl-sm">Color <input id="vertexColor" type="color" value="#d81b60" aria-label="Vertex color" /></label>
+            <label class="lbl-sm">Size <input id="vertexSize" type="number" min="2" max="20" step="1" value="6" class="input-xs" aria-label="Vertex size" /></label>
           </div>
         </details>
 
         <details class="panel">
           <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Lines</summary>
           <div class="group" role="group" aria-label="Line settings">
-            <label for="lineColor">Line color:</label>
-            <input id="lineColor" type="color" value="#1e88e5" aria-label="Line color" />
-            <label for="lineWidth">Line thickness:</label>
-            <input id="lineWidth" type="number" min="1" max="20" step="1" value="2" aria-label="Line thickness" />
-            <button id="connectSelected" type="button">Connect selected</button>
-            <label for="closeLoop" style="display:inline-flex; gap:.5rem; align-items:center;">
-              <input id="closeLoop" type="checkbox" />
-              Close loop
-            </label>
+            <label class="lbl-sm">Color <input id="lineColor" type="color" value="#1e88e5" aria-label="Line color" /></label>
+            <label class="lbl-sm">Width <input id="lineWidth" type="number" min="1" max="20" step="1" value="2" class="input-xs" aria-label="Line thickness" /></label>
+            <button id="connectSelected" type="button" class="btn-light btn-sm">Connect</button>
+            <label class="lbl-sm"><input id="closeLoop" type="checkbox" /> Loop</label>
           </div>
         </details>
 
         <details class="panel">
           <summary><svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" fill="none" stroke-width="2"/><circle cx="10" cy="11" r="2" fill="currentColor"/><path d="M6 17l4-4 3 3 5-5 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Images</summary>
           <div class="group" role="group" aria-label="Image tools">
-            <button id="addImageBtn" type="button" title="Add an image to the plane">Add image</button>
-            <button id="clearImages" type="button" title="Remove all images">Clear images</button>
+            <button id="addImageBtn" type="button" class="btn-light btn-sm">Add image</button>
+            <button id="clearImages" type="button" class="btn-light btn-sm">Clear images</button>
           </div>
         </details>
 
         <details class="panel">
-          <summary>Transformations</summary>
+          <summary>Transform</summary>
           <div class="group" role="group" aria-label="Transforms">
-            <button id="reflectBtn" type="button" title="Reflect selected vertices across a line">Reflect</button>
-            <button id="rotateBtn" type="button" title="Rotate selected vertices around a point">Rotate</button>
-            <button id="scaleBtn" type="button" title="Scale selected vertices from a point">Scale</button>
-            <button id="translateBtn" type="button" title="Translate selected vertices by a vector">Translate</button>
+            <button id="reflectBtn" type="button" class="btn-light btn-sm">Reflect</button>
+            <button id="rotateBtn" type="button" class="btn-light btn-sm">Rotate</button>
+            <button id="scaleBtn" type="button" class="btn-light btn-sm">Scale</button>
+            <button id="translateBtn" type="button" class="btn-light btn-sm">Translate</button>
           </div>
           <div id="reflectExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Reflect settings">
             <span id="modeHint" class="hint" style="display:none;">Click two points to define a reflection line. Press Esc to cancel.</span>
           </div>
           <div id="rotateExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Rotate settings">
-            <label for="rotateAngle">Angle (deg):</label>
-            <input id="rotateAngle" type="number" step="0.1" value="0" aria-label="Rotation angle in degrees" />
-            <label for="rotateDir">Direction:</label>
-            <select id="rotateDir" aria-label="Rotation direction">
-              <option value="ccw" selected>CCW (+)</option>
-              <option value="cw">CW (−)</option>
-            </select>
-            <span id="rotateHint" class="hint" style="display:none;">Click to choose rotation center, then drag to rotate. Or type an angle and press Enter. Esc to cancel.</span>
+            <label class="lbl-sm">Angle <input id="rotateAngle" type="number" step="0.1" value="0" class="input-xs" aria-label="Rotation angle" /></label>
+            <label class="lbl-sm">Dir
+              <select id="rotateDir" aria-label="Rotation direction">
+                <option value="ccw" selected>CCW (+)</option>
+                <option value="cw">CW (−)</option>
+              </select>
+            </label>
+            <span id="rotateHint" class="hint" style="display:none;">Click to choose rotation center, then drag. Or type angle and Enter. Esc to cancel.</span>
           </div>
           <div id="scaleExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Scale settings">
-            <label for="scaleFactor">Factor:</label>
-            <input id="scaleFactor" type="number" step="0.1" value="1" aria-label="Scale factor" />
-            <span id="scaleHint" class="hint" style="display:none;">Click to choose scale center, then drag to scale. Or type a factor and press Enter. Esc to cancel.</span>
+            <label class="lbl-sm">Factor <input id="scaleFactor" type="number" step="0.1" value="1" class="input-xs" aria-label="Scale factor" /></label>
+            <span id="scaleHint" class="hint" style="display:none;">Click to choose scale center, then drag. Or type factor and Enter. Esc to cancel.</span>
           </div>
           <div id="translateExtras" class="group transform-extras" style="display:none;" role="group" aria-label="Translate settings">
-            <label for="translateDx">dx:</label>
-            <input id="translateDx" type="number" step="0.1" value="0" aria-label="Translate dx" />
-            <label for="translateDy">dy:</label>
-            <input id="translateDy" type="number" step="0.1" value="0" aria-label="Translate dy" />
-            <button id="translateApply" type="button" title="Apply numeric translation">Apply</button>
-            <span id="translateHint" class="hint" style="display:none;">Click and drag to set translation vector, or type dx, dy and press Apply. Esc to cancel.</span>
+            <label class="lbl-sm">dx <input id="translateDx" type="number" step="0.1" value="0" class="input-xs" aria-label="Translate dx" /></label>
+            <label class="lbl-sm">dy <input id="translateDy" type="number" step="0.1" value="0" class="input-xs" aria-label="Translate dy" /></label>
+            <button id="translateApply" type="button" class="btn-light btn-sm">Apply</button>
+            <span id="translateHint" class="hint" style="display:none;">Click and drag to set vector, or type dx, dy and Apply. Esc to cancel.</span>
           </div>
         </details>
 
         <details class="panel">
-          <summary>y = m x + b</summary>
+          <summary>y = mx + b</summary>
           <div class="group" role="group" aria-label="y=mx+b tool">
-            <label for="ymbSlope">Slope (fraction a/b):</label>
-            <input id="ymbSlope" type="text" placeholder="e.g., 2/3" aria-label="Slope as fraction a/b" style="width:10ch;" />
-            <label for="ymbIntercept">Y-intercept (b):</label>
-            <input id="ymbIntercept" type="number" step="0.1" value="0" aria-label="Y-intercept" style="width:10ch;" />
-            <button id="ymbAddBtn" type="button" title="Add line with given slope and intercept">Add line</button>
+            <label class="lbl-sm">Slope <input id="ymbSlope" type="text" placeholder="e.g. 2/3" class="input-med" aria-label="Slope as fraction" /></label>
+            <label class="lbl-sm">b <input id="ymbIntercept" type="number" step="0.1" value="0" class="input-xs" aria-label="Y-intercept" /></label>
+            <button id="ymbAddBtn" type="button" class="btn-3d btn-sm">Add line</button>
           </div>
           <div class="group" role="group" aria-label="Equation preview">
             <span id="ymbEqPreview" class="hint"></span>
-          </div>
-        </details>
-        <details class="panel" id="challengePanel">
-          <summary>Challenge</summary>
-          <div class="group" role="group" aria-label="Challenge settings">
-            <button id="startLineChallengeBtn" type="button" class="btn-sun btn-sm" title="Start a line equation challenge">🚦 Start Line Challenge</button>
-            <button id="startVertexChallengeBtn" type="button" class="btn-lime btn-sm" title="Start a single-point challenge">🎯 Start Vertice Challenge</button>
-            <button id="nextChallengeBtn" type="button" class="btn-light btn-sm" title="Skip to a new challenge" style="display:none;">New challenge</button>
-          </div>
-          <div class="group" role="group" aria-label="Challenge prompt">
-            <span id="challengeText" class="hint" aria-live="polite"></span>
           </div>
         </details>
       </div>
@@ -136,28 +117,60 @@
     </nav>
   </header>
 
+  <!-- Challenge Bar — always-visible primary CTA -->
+  <div class="challenge-bar" id="challengeBar" role="region" aria-label="Challenge mode">
+    <div class="challenge-bar-inner">
+      <div class="challenge-idle" id="challengeIdle">
+        <span class="challenge-bar-icon" aria-hidden="true">&#x1F3AF;</span>
+        <span class="challenge-bar-label">Challenge</span>
+        <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
+        <button id="startLineChallengeBtn" type="button" class="btn-3d warn challenge-cta">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1.1em;height:1.1em;vertical-align:-0.15em;"><line x1="4" y1="20" x2="20" y2="4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+          Line Challenge
+        </button>
+        <button id="startVertexChallengeBtn" type="button" class="btn-3d success challenge-cta">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1.1em;height:1.1em;vertical-align:-0.15em;"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
+          Vertex Challenge
+        </button>
+      </div>
+      <div class="challenge-active" id="challengeActiveEl" hidden>
+        <span class="challenge-type-badge" id="challengeTypeBadge">LINE</span>
+        <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
+        <span id="challengeText" class="challenge-prompt-text" aria-live="polite"></span>
+        <div class="challenge-controls">
+          <button id="nextChallengeBtn" type="button" class="btn-3d btn-sm challenge-skip-btn">Skip</button>
+          <button id="stopChallengeBtn" type="button" class="btn-light btn-sm challenge-stop-btn">End</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <main class="main-wrap full-bleed" role="main">
     <aside class="sidebar sidebar-left" aria-label="Quick actions">
       <div class="sidebar-header">
         <h3>Actions</h3>
       </div>
-      <div class="action-buttons" style="padding: 8px 12px;">
-        <button id="undoBtn" class="btn-outline" type="button" title="Undo (Ctrl+Z)" style="width:100%;">↶ Undo</button>
-        <button id="redoBtn" class="btn-outline" type="button" title="Redo (Ctrl+Y or Ctrl+Shift+Z)" style="width:100%;">↷ Redo</button>
-        <button id="deleteSelected" class="btn-neutral" type="button" title="Delete selected vertices/lines/images" style="width:100%;">🗑️ Delete selected</button>
-        <button id="clearSelection" class="btn-neutral" type="button" title="Clear selection" style="width:100%;">✨ Clear selection</button>
-        <div class="split-row" style="display:flex; gap:8px; width:100%; margin:8px 0;">
-          <button id="clearVertices" class="btn-neutral" type="button" title="Delete all vertices" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1em; height:1em;"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
-            <span style="font-size:0.8em;">Delete vertices</span>
+      <div class="action-buttons">
+        <div class="action-group">
+          <button id="undoBtn" class="btn-light action-btn" type="button" title="Undo (Ctrl+Z)">Undo</button>
+          <button id="redoBtn" class="btn-light action-btn" type="button" title="Redo (Ctrl+Y)">Redo</button>
+        </div>
+        <div class="action-group">
+          <button id="deleteSelected" class="btn-light action-btn" type="button" title="Delete selected">Delete Selected</button>
+          <button id="clearSelection" class="btn-light action-btn" type="button" title="Clear selection">Clear Selection</button>
+        </div>
+        <div class="action-group action-clear-row">
+          <button id="clearVertices" class="btn-light action-btn-half" type="button" title="Delete all vertices">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
+            Vertices
           </button>
-          <button id="clearLines" class="btn-neutral" type="button" title="Delete all lines" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:1em; height:1em;"><line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <span style="font-size:0.8em;">Delete lines</span>
+          <button id="clearLines" class="btn-light action-btn-half" type="button" title="Delete all lines">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Lines
           </button>
         </div>
-        <button id="clearAll" class="btn-danger btn-sm" type="button" title="Remove all content" style="width:100%;">Delete all</button>
-        <button id="exportPdfBtn" class="btn-neutral" type="button" title="Export current view as PDF" style="width:100%;">📄 Export PDF</button>
+        <button id="clearAll" class="btn-danger action-btn" type="button" title="Remove all content">Delete All</button>
+        <button id="exportPdfBtn" class="btn-accent action-btn" type="button" title="Export as PDF">Export PDF</button>
       </div>
     </aside>
     <div class="canvas-wrap">
@@ -169,12 +182,12 @@
         <h3>Vertices</h3>
         <small>Click canvas to add. Edit labels here.</small>
       </div>
-      <div style="padding: 8px 12px;">
-        <button id="createInfiniteLine" type="button" title="Graph an infinite line based on selected vertices" style="width:100%;">Graph this Line</button>
+      <div class="vertex-tools">
+        <button id="createInfiniteLine" class="btn-3d" type="button" title="Graph an infinite line based on selected vertices">Graph this Line</button>
       </div>
-      <div id="mathInfo" class="series-card" style="margin: 8px 12px;">
-        <div><strong>Line info</strong> <small class="hint">Select any 2 vertices</small></div>
-        <div id="mathInfoContent" class="hint">Select two vertices to see slope and equation.</div>
+      <div id="mathInfo" class="line-info-card">
+        <div class="line-info-header"><strong>Line Info</strong></div>
+        <div id="mathInfoContent" class="line-info-content">Select two vertices to see slope and equation.</div>
       </div>
       <ul id="vertexList" class="vertex-list" aria-live="polite"></ul>
     </aside>
@@ -186,7 +199,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>Choose an image</h3>
-        <button id="closeImageModal" type="button" aria-label="Close">×</button>
+        <button id="closeImageModal" type="button" aria-label="Close">&times;</button>
       </div>
       <div class="gallery">
         {% if available_images %}
@@ -202,24 +215,7 @@
     </div>
   </div>
 
-  <!-- Share QR modal -->
-  <div id="qrModal" class="modal" hidden aria-hidden="true" role="dialog" aria-label="Share session">
-    <div class="modal-backdrop" data-close="1"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>Share session</h3>
-        <button id="closeQrModal" type="button" aria-label="Close">×</button>
-      </div>
-      <div style="padding:16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center;">
-        <img id="qrImage" alt="QR code to join session" style="width:256px; height:256px; image-rendering: pixelated; border:1px solid rgba(0,0,0,0.1); border-radius:8px; background:#fff;" />
-        <div style="min-width:260px; max-width:520px;">
-          <p id="qrPinText" class="hint" style="margin:0 0 8px; font-weight:700;">PIN: —</p>
-          <p class="hint" style="margin:0 0 8px;">Scan to join this session, or share the link below:</p>
-          <input id="qrLinkText" type="text" readonly style="width:100%;" />
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include '_qr_modal.html' %}
 
   <!-- Reward toast -->
   <div id="rewardToast" class="reward-toast" hidden aria-live="assertive" role="alert">
@@ -241,5 +237,6 @@
 {% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='adaptive_difficulty.js') }}"></script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
 {% endblock %}
