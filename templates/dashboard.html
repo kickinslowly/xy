@@ -138,9 +138,9 @@
   function renderPerMode(map){
     const root = document.getElementById('perMode');
     root.innerHTML = '';
-    const order = ['plane','line','battleship','memewars','memedash','ratios'];
-    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
-    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
+    const order = ['plane','line','battleship','memewars','memedash','ratios','subitize'];
+    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios', subitize: 'Subitize' };
+    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗', subitize: '🔢' };
     order.forEach(m => {
       const s = map[m] || {};
       const div = document.createElement('div');
@@ -169,8 +169,8 @@
       li.textContent = 'No activity yet. Play a game to get started!';
       ul.appendChild(li); return;
     }
-    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios' };
-    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗' };
+    const LABELS = { plane: 'Coordinate Plane', line: 'Line Graph', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios', subitize: 'Subitize' };
+    const ICONS  = { plane: '🧭', line: '📈', battleship: '🚢', memewars: '⚔️', memedash: '⚡', ratios: '➗', subitize: '🔢' };
     list.forEach(r => {
       const li = document.createElement('li');
       const date = r.played_at ? new Date(r.played_at) : null;

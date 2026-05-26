@@ -645,6 +645,7 @@ MODE_SYNONYMS = {
     'memewars': {'memewars', 'meme_wars', 'meme-wars', 'meme wars'},
     'memedash': {'memedash', 'meme_dash', 'meme-dash', 'meme dash'},
     'ratios': {'ratios', 'ratio'},
+    'subitize': {'subitize'},
 }
 
 
@@ -1173,7 +1174,7 @@ def canonical_mode_group(target_mode: str):
 
 
 def ensure_achievements_seed():
-    modes = ['plane', 'line', 'battleship', 'memewars', 'ratios', 'memedash']
+    modes = ['plane', 'line', 'battleship', 'memewars', 'ratios', 'memedash', 'subitize']
     tiers = [10, 50, 200]  # meaningful thresholds
 
     # Friendly labels per mode for consistent naming/spelling on dashboard
