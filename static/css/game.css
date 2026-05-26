@@ -2919,6 +2919,40 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   line-height: 1;
 }
 
+/* Speed badge */
+.speed-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mode) 15%, var(--surface-2, var(--surface)));
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: background 0.3s, border-color 0.3s, color 0.3s;
+}
+.speed-badge[data-tier="lightning"] { border-color: #fbbf24; color: #fcd34d; background: rgba(251,191,36,0.15); }
+.speed-badge[data-tier="quick"]     { border-color: #94a3b8; color: #cbd5e1; background: rgba(148,163,184,0.12); }
+.speed-badge[data-tier="steady"]    { border-color: var(--border); color: var(--text-muted); }
+
+/* Victory stats */
+.victory-stats {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+.victory-stat {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.victory-stat strong { color: var(--text); }
+.speed-tier-lightning { color: #fcd34d !important; font-weight: 800; }
+.speed-tier-quick { color: #cbd5e1 !important; font-weight: 700; }
+
 @media (max-width: 640px) {
   .subitize-canvas-wrap { max-width: 100%; }
   .subitize-input { width: 80px; font-size: 20px; }

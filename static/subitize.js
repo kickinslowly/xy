@@ -470,24 +470,34 @@
 
     cancelFlash(); // reveal dots for feedback
 
+    const responseMs = Date.now() - problemStartMs;
     const correct = val === currentProblem.answer;
     adjustDifficulty(correct);
-    recordToServer(correct);
+    recordToServer(correct, responseMs);
 
     if (correct) {
+      responseTimes.push(responseMs);
+      updateSpeedBadge();
       score++;
       streak++;
       updateScore();
+
+      // Speed feedback layered onto success splash
+      let speedLabel = '';
+      if (responseMs < 1500) speedLabel = 'Lightning!';
+      else if (responseMs < 3000) speedLabel = 'Quick!';
+
       if (streak >= 3) {
-        successSub.textContent = `${streak} in a row!`;
+        successSub.textContent = `${streak} in a row!` + (speedLabel ? ' ' + speedLabel : '');
         try { if (window.SoundFX) window.SoundFX.play('streak', streak); } catch(_){}
       } else {
-        successSub.textContent = 'Nice number sense!';
+        successSub.textContent = speedLabel || 'Nice number sense!';
         try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
       }
       flash(splashSuccess, 1000);
       if (score >= GOAL) {
         setTimeout(() => {
+          showVictoryStats();
           victory.classList.add('show');
           try { if (window.SoundFX) window.SoundFX.play('win'); } catch(_){}
         }, 1100);
@@ -521,6 +531,19 @@
     nextProblem();
   }
 
+  function showVictoryStats() {
+    if (!victoryStatsEl || responseTimes.length === 0) return;
+    const avg = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+    const fastest = Math.min.apply(null, responseTimes);
+    let badge = 'Steady';
+    if (avg < 2000) badge = '⚡ Lightning';
+    else if (avg < 3000) badge = '\u{1F3C3} Quick';
+    victoryStatsEl.innerHTML =
+      '<p class="victory-stat">Avg: <strong>' + (avg / 1000).toFixed(1) + 's</strong></p>' +
+      '<p class="victory-stat">Fastest: <strong>' + (fastest / 1000).toFixed(1) + 's</strong></p>' +
+      '<p class="victory-stat speed-tier-' + (avg < 2000 ? 'lightning' : avg < 3000 ? 'quick' : 'steady') + '">' + badge + '</p>';
+  }
+
   // Events
   submitBtn.addEventListener('click', checkAnswer);
   answerInput.addEventListener('keydown', e => { if (e.key === 'Enter') checkAnswer(); });
@@ -529,6 +552,8 @@
   document.getElementById('victoryAgain').addEventListener('click', () => {
     victory.classList.remove('show');
     score = 0;
+    responseTimes = [];
+    if (speedBadgeEl) { speedBadgeEl.hidden = true; }
     updateScore();
     nextProblem();
   });
