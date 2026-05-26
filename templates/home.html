@@ -510,5 +510,29 @@
     if (ps) ps.hidden = true;
   });
 })();
+
+// First-visit tour
+(function(){
+  if (localStorage.getItem('tour_seen')) return;
+  document.addEventListener('DOMContentLoaded', function(){
+    var firstCard = document.querySelector('.game-card');
+    if (!firstCard) return;
+    var tip = document.createElement('div');
+    tip.className = 'tour-tip';
+    tip.innerHTML = '<strong>Pick any game to start!</strong><br>Each one teaches different math skills. Your progress is saved when you sign in.' +
+      '<br><button class="tour-dismiss btn-3d btn-sm" style="margin-top:8px;">Got it!</button>';
+    tip.style.cssText = 'position:absolute;z-index:500;padding:16px 20px;background:var(--surface,#151924);border:2px solid var(--accent,#7a5cff);border-radius:12px;color:var(--text,#e2e8f0);font-size:14px;max-width:280px;box-shadow:0 8px 32px rgba(122,92,255,0.3);line-height:1.5;';
+    firstCard.style.position = 'relative';
+    firstCard.appendChild(tip);
+    tip.style.top = '-80px';
+    tip.style.left = '50%';
+    tip.style.transform = 'translateX(-50%)';
+    tip.querySelector('.tour-dismiss').addEventListener('click', function(){
+      tip.remove();
+      localStorage.setItem('tour_seen', '1');
+    });
+    setTimeout(function(){ if (tip.parentNode) { tip.remove(); localStorage.setItem('tour_seen', '1'); } }, 15000);
+  });
+})();
 </script>
 {% endblock %}
