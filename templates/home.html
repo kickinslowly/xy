@@ -289,6 +289,23 @@
 
 {% block extra_scripts %}
 <script>
+function animateCount(el, target, suffix) {
+  if (!el) return;
+  suffix = suffix || '';
+  var start = parseInt(el.textContent.replace(/[^\d]/g, ''), 10) || 0;
+  if (start === target) { el.textContent = target.toLocaleString() + suffix; return; }
+  var duration = 600;
+  var startTime = performance.now();
+  function step(now) {
+    var t = Math.min(1, (now - startTime) / duration);
+    t = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    var val = Math.round(start + (target - start) * t);
+    el.textContent = val.toLocaleString() + suffix;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 // Fetch and display per-mode stats + XP on home page
 (function(){
   async function loadStats(){
@@ -331,7 +348,7 @@
       if (xp) {
         document.getElementById('xpLevel').textContent = xp.level;
         document.getElementById('xpTitle').textContent = xp.title;
-        document.getElementById('xpTotal').textContent = xp.total_xp.toLocaleString() + ' XP';
+        animateCount(document.getElementById('xpTotal'), xp.total_xp, ' XP');
         const pct = xp.xp_needed > 0 ? Math.min(100, Math.round(xp.xp_in_level / xp.xp_needed * 100)) : 100;
         document.getElementById('xpFill').style.width = pct + '%';
         document.getElementById('xpProgress').textContent =
@@ -343,7 +360,7 @@
         const coinsCard = document.getElementById('coinsCard');
         const coinsAmount = document.getElementById('coinsAmount');
         if (coinsCard && coinsAmount) {
-          coinsAmount.textContent = data.coins.toLocaleString();
+          animateCount(coinsAmount, data.coins);
           coinsCard.hidden = false;
         }
       }

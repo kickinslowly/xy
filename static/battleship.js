@@ -967,9 +967,10 @@
       showTurnOverlayOnce();
       addTempClass(enemyBoardEl, 'turn-pulse', 1800);
       addTempClass(fireBtnEl, 'turn-pulse', 1800);
+      startTurnTimer();
     }
     if (!canFireNow && lastTurnWasMine) {
-      // Cleanup happens via class toggles/timeouts
+      clearTurnTimer();
     }
     lastTurnWasMine = !!canFireNow;
     try { document.title = canFireNow ? 'Your Turn — Battleship Mode' : baseTitle; } catch(_){}
@@ -1289,6 +1290,56 @@
       try { if (window.SoundFX) window.SoundFX.play('turn'); } catch(_){}
       setTimeout(() => { try { turnOverlay.classList.remove('show'); } catch(_){} }, 1000);
     } catch(_){}
+  }
+
+  // Turn timer: auto-fire after 45 seconds to prevent stalling
+  const TURN_TIMER_SEC = 45;
+  let _turnTimerIv = null;
+  let _turnTimerEnd = 0;
+
+  function startTurnTimer() {
+    clearTurnTimer();
+    _turnTimerEnd = Date.now() + TURN_TIMER_SEC * 1000;
+    _turnTimerIv = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((_turnTimerEnd - Date.now()) / 1000));
+      if (turnPill && state && state.turn === myTeam) {
+        turnPill.textContent = `Your Turn (${remaining}s)`;
+      }
+      if (remaining <= 5 && remaining > 0) {
+        try { if (window.SoundFX) window.SoundFX.play('tick'); } catch(_){}
+      }
+      if (remaining <= 0) {
+        clearTurnTimer();
+        autoFireRandom();
+      }
+    }, 1000);
+  }
+
+  function clearTurnTimer() {
+    if (_turnTimerIv) { clearInterval(_turnTimerIv); _turnTimerIv = null; }
+  }
+
+  function autoFireRandom() {
+    if (!state || state.phase !== 'playing' || !myTeam || state.turn !== myTeam) return;
+    const enemy = myTeam === 'A' ? 'B' : 'A';
+    const enemyBoard = state.boards[enemy];
+    if (!enemyBoard) return;
+    const pool = [];
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        const k = `${r},${c}`;
+        if (!enemyBoard.hits?.[k] && !enemyBoard.misses?.[k]) pool.push({ r, c });
+      }
+    }
+    if (!pool.length) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const hit = isShipAt(enemyBoard.ships, pick.r, pick.c);
+    markShot(myTeam, enemy, pick.r, pick.c, hit);
+    state.shotSeq = (state.shotSeq || 0) + 1;
+    state.turn = enemy;
+    if (isAllSunk(enemyBoard.ships)) { state.phase = 'gameover'; state.winner = myTeam; }
+    updateUiFromState();
+    broadcast();
   }
 
   // Team join buttons
