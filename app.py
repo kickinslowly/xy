@@ -556,7 +556,7 @@ def google_auth():
     payload = {
         'uid': int(user.id),
         'role': user.role,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
     }
     token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
@@ -821,8 +821,14 @@ MASTERY_SLIP_RATE = 0.10    # how much incorrect answers decrease mastery
 MASTERY_PRIOR = 0.3         # starting mastery probability for new skills
 
 
+_standards_seeded = False
+
 def ensure_standards_seed():
     """Populate the skills table with Common Core standards. Idempotent per code."""
+    global _standards_seeded
+    if _standards_seeded:
+        return
+    _standards_seeded = True
     existing_codes = {s.standard_code for s in Skill.query.all()}
     if len(existing_codes) >= len(STANDARDS_CATALOG):
         return
@@ -1174,7 +1180,13 @@ def canonical_mode_group(target_mode: str):
     return sorted(names)
 
 
+_achievements_seeded = False
+
 def ensure_achievements_seed():
+    global _achievements_seeded
+    if _achievements_seeded:
+        return
+    _achievements_seeded = True
     modes = ['plane', 'line', 'battleship', 'memewars', 'ratios', 'memedash', 'subitize']
     tiers = [10, 50, 200]  # meaningful thresholds
 

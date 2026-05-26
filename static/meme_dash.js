@@ -277,6 +277,7 @@
       usedSecondJump: false,
       prevUp: false,
       flashUntil: 0,
+      lastSeenAt: Date.now(),
     };
   }
 
@@ -514,6 +515,21 @@
 
   function addMeIfMissing(){
     if (!state.players[clientId]) state.players[clientId] = defaultPlayer(clientId);
+    if (state.players[clientId]) state.players[clientId].lastSeenAt = Date.now();
+  }
+
+  const GHOST_TIMEOUT_MS = 15000;
+  function cleanupGhostPlayers() {
+    if (!state || !state.players) return;
+    const cutoff = Date.now() - GHOST_TIMEOUT_MS;
+    for (const id of Object.keys(state.players)) {
+      if (id === clientId) continue;
+      if (id === state.botId) continue;
+      const p = state.players[id];
+      if ((p.lastSeenAt || 0) < cutoff) {
+        delete state.players[id];
+      }
+    }
   }
 
   function applyRemoteState(remote){
@@ -524,6 +540,11 @@
 
     // Base apply
     state = remote;
+    // Stamp remote players as recently seen
+    const seenNow = Date.now();
+    for (const id of Object.keys(state.players || {})) {
+      if (id !== clientId) state.players[id].lastSeenAt = seenNow;
+    }
 
     // Sync procedural platforms from the shared seed
     syncPlatformsFromSeed();
@@ -714,6 +735,7 @@
       }
       const amOwner = state.ownerId === clientId;
       if (amOwner) {
+        cleanupGhostPlayers();
         spawnLoop(ts);
         if (state.terminatorMode) { driveBotAI(dt); }
         steppedSimulate(dt, true);

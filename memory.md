@@ -346,3 +346,14 @@
   - **Meme Wars duplicate const fix**: Pre-existing `const hasA` double-declaration in updateUiFromState (syntax error)
 - **Files Changed**: app.py (achievements + CHALLENGE_STANDARD_MAP), static/battleship.js (GRID_MODES + dynamic grid), static/meme_dash.js (variable jump + kill hitbox), static/meme_wars.js (cssUrl + hasA fix), static/main.js (requestDraw rAF), templates/battleship.html (grid select), static/css/game.css (axis-cell, origin-label)
 - **Tests**: All JS node --check OK; app.py AST+boot OK; 20 routes
+
+### Session 18b - 2026-05-26 (continued)
+- **Work Done**:
+  - **Battleship shot log** (G5): Sidebar panel showing last 20 shots with coordinate notation ("You fired at (3, 7) — Hit!"), auto-scroll, color-coded hit/miss
+  - **Backend perf caching** (G8): `ensure_achievements_seed()` + `ensure_standards_seed()` now skip after first call (was full DB scan on every POST)
+  - **JWT deprecation fix** (G8): `datetime.utcnow()` → `datetime.now(timezone.utc)`
+  - **Mobile sidebar collapse** (G4): Battleship/Meme Wars stat cards hidden on phones (< 640px); Subitize pills wrap+shrink at 380px
+  - **Meme Dash ghost cleanup** (G7): Owner removes players not seen for 15s; `lastSeenAt` stamped on remote state arrival + self update
+  - **Goals housekeeping**: Marked ratios scale/simplify as done (already shipped session 14), skip-to-content already shipped
+- **Files Changed**: app.py (seed caching + datetime fix), static/battleship.js (shot log), static/meme_dash.js (ghost cleanup), templates/battleship.html (shot log panel), static/css/game.css (mobile sidebar + subitize pills), goals.md
+- **Tests**: All JS + app.py OK; 20 routes

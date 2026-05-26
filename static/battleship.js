@@ -6,6 +6,8 @@
   const shareBtn = qs('#shareSessionBtn');
   const joinBtn = qs('#joinSessionBtn');
 
+  const shotLogEl = qs('#shotLog');
+
   const btnJoinA = qs('#joinA');
   const btnJoinB = qs('#joinB');
   const btnStart = qs('#startBtn');
@@ -918,6 +920,8 @@
     const remaining = (state.boards[enemy].ships || []).filter(s => !isShipSunk(s)).length;
     state.teams[enemy].shipsRemaining = remaining;
     state.lastShot = { team, r, c, hit };
+    // Shot log entry
+    appendShotLog(team, r, c, hit);
     // Sound effects + ship sunk callout
     try {
       if (window.SoundFX) {
@@ -933,6 +937,41 @@
         }
       }
     } catch(_){}
+  }
+
+  function appendShotLog(team, r, c, hit) {
+    if (!shotLogEl) return;
+    const gc = gridConfig();
+    const who = (myTeam && team === myTeam) ? 'You' : 'Enemy';
+    const coord = `(${gc.xFromC(c)}, ${gc.yFromR(r)})`;
+    const result = hit ? 'Hit! \u{1F3AF}' : 'Miss \u{1F30A}';
+    const li = document.createElement('li');
+    li.style.color = hit ? 'var(--success, #34d399)' : 'var(--text-muted, #94a3b8)';
+    li.textContent = `${who} fired at ${coord} — ${result}`;
+    shotLogEl.prepend(li);
+    while (shotLogEl.children.length > 20) shotLogEl.lastChild.remove();
+  }
+
+  function rebuildShotLog() {
+    if (!shotLogEl || !state || !myTeam) return;
+    shotLogEl.innerHTML = '';
+    const gc = gridConfig();
+    const allShots = [];
+    for (const team of ['A', 'B']) {
+      for (const s of (state.teams[team].shotsLog || [])) {
+        allShots.push({ team, r: s.r, c: s.c, hit: s.hit });
+      }
+    }
+    const recent = allShots.slice(-20);
+    for (const s of recent) {
+      const who = (s.team === myTeam) ? 'You' : 'Enemy';
+      const coord = `(${gc.xFromC(s.c)}, ${gc.yFromR(s.r)})`;
+      const result = s.hit ? 'Hit! \u{1F3AF}' : 'Miss \u{1F30A}';
+      const li = document.createElement('li');
+      li.style.color = s.hit ? 'var(--success, #34d399)' : 'var(--text-muted, #94a3b8)';
+      li.textContent = `${who} fired at ${coord} — ${result}`;
+      shotLogEl.prepend(li);
+    }
   }
 
   function showSunkToast(count) {
@@ -1197,6 +1236,7 @@
     // Render boards
     renderBoards();
     renderStats();
+    rebuildShotLog();
 
     // Schedule bot move if it's bot's turn
     try { maybeTriggerBotMove(); } catch(_){ }

@@ -105,9 +105,9 @@
 ### Active Tasks — Mobile Layout (NEW)
 - ✅ Mobile nav horizontal scroll.
 - 🔲 Coord Plane sidebars completely vanish on mobile (no undo, vertex list, line info). Replace with bottom sheet/FAB.
-- 🔲 Battleship/Meme Wars 240px sidebar doesn't collapse — board unplayably small on phones.
+- ✅ Battleship/Meme Wars sidebar: stat cards hidden on phones (< 640px), max-height capped.
 - 🔲 Line Graph sidebar at 28vh — data tables unusable on tablets.
-- 🔲 Subitize: 5 operation pills overflow on 320px screens.
+- ✅ Subitize: operation pills wrap + shrink at 380px for narrow phones.
 
 ### Active Tasks — Onboarding (NEW)
 - 🔲 New user welcome state: "Sign in to save progress, earn XP, unlock rewards" CTA
@@ -122,7 +122,7 @@
 - 🔲 Light mode is broken: token overrides exist but hardcoded dark colors everywhere
 - 🔲 Extract ~900 lines of inline CSS from home/dashboard/shop templates to cacheable files
 - 🔲 Page transitions via View Transitions API (smooth cross-fades between modes)
-- 🔲 Skip-to-content link missing for keyboard a11y
+- ✅ Skip-to-content link in base.html + theme.css (already shipped)
 - 🔲 Mascot character for hero section (illustrated math character)
 
 ---
@@ -161,8 +161,8 @@
 - ✅ **Unit Rates** (6.RP.A.2): "How many fish per cat?" — biggest standards gap
 - ✅ **Ratio Tables**: Partially-filled table with blanks to fill in
 - 🔲 **Tape Diagrams**: SVG proportional bars showing relative magnitude
-- 🔲 **Scaling** (7.RP.A.2): "If 3:5, what is ?:15?"
-- 🔲 **Simplifying Ratios**: Use existing dead `gcd()` function
+- ✅ **Scaling** (7.RP.A.2): "If 3:5, what is ?:15?" — implemented Session 14
+- ✅ **Simplifying Ratios**: gcd-based simplification challenge — implemented Session 14
 - 🔲 **Comparing Ratios**: "Which ratio is greater?"
 - 🔲 **Real-World Contexts**: Recipes, maps, unit pricing, speed/distance/time
 - ✅ **Grouped drop zones**: Split board into Side A / Side B with running count badges (board counter with live "3 : 4" display)
@@ -184,7 +184,7 @@
 - 🔲 **Math-problem shields**: Hit a cell → solve problem to confirm hit. Wrong = deflected.
 - ✅ **Four-quadrant grid**: Selectable 11×11 grid (-5 to 5) with axis highlighting, dynamic fire inputs, bot AI support. Maps to 6.NS.C.6b + 6.NS.C.8.
 - 🔲 **Coordinate notation training**: Force typing (x, y) format to fire
-- 🔲 **Shot log**: "You fired at (3, 7) — Miss!" reinforces coordinate notation
+- ✅ **Shot log**: "You fired at (3, 7) — Miss!" sidebar panel, last 20 shots, auto-scroll
 - 🔲 **Variable grid sizes**: 5x5 for younger, 15x15 for advanced
 - 🔲 **Post-game data analysis**: Hit rate heatmap, accuracy over time (6.SP standards)
 
@@ -235,7 +235,7 @@
 - 🔲 Turn timer (30/60/90s) with auto-skip — prevents stalling
 - 🔲 Rematch with score tracking ("Best of 3: You 1 - Opponent 0")
 - 🔲 Meme Dash opponent scoreboard (can't see others' progress)
-- 🔲 Meme Dash ghost player cleanup (disconnected players persist forever)
+- ✅ Meme Dash ghost player cleanup (15s timeout, owner-only, lastSeenAt tracking)
 - 🔲 Coord plane real-time competitive challenges (teacher shares PIN, students race)
 - 🔲 Friend challenge links (pre-filled room code)
 - ✅ Meme Wars team rosters wired / spectator team labels
@@ -267,9 +267,9 @@
 - 🔲 Extract shared Battleship/Meme Wars code (~600 LOC duplicated) into `gridGameBase.js`
 - 🔲 Split `app.py` (2124 LOC) into Flask Blueprints: models, standards, shop, sockets, achievements
 - 🔲 Extract shared `math_utils.js` (toFractionApprox, etc.) between main.js and line_mode.js
-- 🔲 `ensure_achievements_seed()` called on every POST — cache after first seed
+- ✅ `ensure_achievements_seed()` + `ensure_standards_seed()` cached after first call
 - 🔲 Leaderboard `_build_leaderboard_entries()` is O(N queries per user) — needs joined query
-- 🔲 JWT: replace `datetime.utcnow()` with `datetime.now(timezone.utc)`
+- ✅ JWT: replaced `datetime.utcnow()` with `datetime.now(timezone.utc)`
 - 🔲 No token refresh — 12hr JWT expires silently
 - 🔲 Coord plane history array unbounded — no GC/compaction
 - 🔲 Main.js O(n) vertex lookups everywhere — use Map

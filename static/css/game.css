@@ -2230,11 +2230,26 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .fire-btn { font-size: 14px; padding: 8px 14px; }
   .board { --cell: clamp(24px, 7.5vw, 42px); }
   .game-main { padding: var(--gap-sm); }
+  /* Battleship/Meme Wars: hide stat cards + shot log on phones */
+  .mode-battleship .game-sidebar .stat-card,
+  .mode-meme-wars .game-sidebar .stat-card {
+    display: none;
+  }
+  .mode-battleship .game-sidebar,
+  .mode-meme-wars .game-sidebar {
+    max-height: 60px;
+    overflow: hidden;
+  }
   /* Subitize: wrap pills and toggles on small screens */
   .subitize-toolbar-left .mode-pills { gap: 3px; }
   .subitize-toolbar-left .mode-pill { padding: 5px 8px; font-size: 11px; }
   .subitize-toolbar-right { flex-wrap: wrap; gap: 4px; }
   .subitize-toolbar-right .mode-pill { font-size: 11px; padding: 5px 8px; }
+  .subitize-toolbar-left .mode-pills { flex-wrap: wrap; justify-content: center; }
+}
+
+@media (max-width: 380px) {
+  .subitize-toolbar-left .mode-pill { padding: 4px 6px; font-size: 10px; min-width: 0; }
 }
 
 /* ---- 20. Coordinate Plane Specifics ---- */
