@@ -284,12 +284,29 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  // Theme-aware canvas colors (reads CSS custom properties from :root)
+  function getCanvasTheme() {
+    const style = getComputedStyle(document.documentElement);
+    const isDark = (style.getPropertyValue('--bg') || '').trim().match(/^#[0-3]/);
+    if (isDark) {
+      return {
+        bg: style.getPropertyValue('--surface').trim() || '#151924',
+        grid: 'rgba(255,255,255,0.06)',
+        gridEmphasis: 'rgba(255,255,255,0.12)',
+        axis: '#8899aa',
+        label: '#8899aa',
+      };
+    }
+    return { bg: '#ffffff', grid: '#e0e0e0', gridEmphasis: '#c5ccd6', axis: '#37474f', label: '#455a64' };
+  }
+
   function drawGrid() {
     const w = canvas.width;
     const h = canvas.height;
+    const theme = getCanvasTheme();
 
     // Base background
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, w, h);
 
     const stepPx = gridStepUnits * pixelsPerUnit;
@@ -307,7 +324,7 @@
     ctx.lineWidth = 1;
 
     // Minor grid
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeStyle = theme.grid;
     ctx.beginPath();
     for (let x = startX; x <= endX; x += gridStepUnits) {
       const sx = worldToScreen({ x, y: 0 }).x;
@@ -323,7 +340,7 @@
 
     // Emphasize every 5th line
     const emphasizeEvery = 5;
-    ctx.strokeStyle = '#c5ccd6';
+    ctx.strokeStyle = theme.gridEmphasis;
     ctx.beginPath();
     for (let x = startX; x <= endX; x += gridStepUnits) {
       if (Math.round(x / gridStepUnits) % emphasizeEvery !== 0) continue;
@@ -340,7 +357,7 @@
     ctx.stroke();
 
     // Axes
-    ctx.strokeStyle = '#37474f';
+    ctx.strokeStyle = theme.axis;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     // x-axis
@@ -354,7 +371,7 @@
     ctx.stroke();
 
     // Ticks and labels (adaptive to zoom)
-    ctx.fillStyle = '#455a64';
+    ctx.fillStyle = theme.label;
 
     // Determine dynamic label density and font size so that some labels remain visible when zoomed out.
     const minLabelSpacingPx = 50; // desired minimum pixel spacing between labels

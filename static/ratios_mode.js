@@ -590,12 +590,13 @@
       // Record this successful completion for dashboard/achievements (if authenticated)
       try {
         if (window.recordResult) {
+          const ratioMode = prevMode === 'master' ? (ch.type || prevMode) : prevMode;
           const payload = {
             mode: 'ratios',
             game_name: labelForMode(prevMode),
             outcome: 'success',
             room_pin: room,
-            details_json: { challenge_type: 'ratio', ratio_mode: prevMode, correct: true, difficulty: DIFF_LABELS[challengeDifficulty], challenge: ch }
+            details_json: { challenge_type: 'ratio', ratio_mode: ratioMode, correct: true, difficulty: DIFF_LABELS[challengeDifficulty], challenge: ch }
           };
           // Fire-and-forget; backend counts successes for achievements
           window.recordResult(payload).catch(() => {});
@@ -614,12 +615,13 @@
       // Record incorrect attempt for analytics
       try {
         if (window.recordResult) {
+          const failMode = (sharedState.mode === 'master' && ch.type) ? ch.type : (sharedState.mode || 'create');
           window.recordResult({
             mode: 'ratios',
             game_name: labelForMode(sharedState.mode || 'create'),
             outcome: 'incorrect',
             room_pin: room,
-            details_json: { challenge_type: 'ratio', ratio_mode: (sharedState.mode || 'create'), correct: false, difficulty: DIFF_LABELS[challengeDifficulty] }
+            details_json: { challenge_type: 'ratio', ratio_mode: failMode, correct: false, difficulty: DIFF_LABELS[challengeDifficulty] }
           }).catch(() => {});
         }
       } catch (e) { /* ignore */ }

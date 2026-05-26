@@ -3,9 +3,9 @@
 ## Current State
 
 ### Last Action
-- **Date**: 2026-05-25
-- **Action**: Session 13 — Added manual ship placement phase to Battleship mode. New `placement` phase between countdown and playing. Students click grid cells to place 5 ships (Carrier/Battleship/Cruiser/Submarine/Destroyer) with hover preview, orientation toggle (R key), undo, randomize fallback. Coordinate practice toast on each placement. Both teams must Ready before battle starts. Bot auto-places instantly. Multiplayer-synced via existing broadcast system.
-- **Status**: 7 game modes live. Battleship now has placement phase. Previous: Session 12 Subitize mode built, full 7-agent audit, DEVELOPMENT_PLAN.md + goals.md rewrite.
+- **Date**: 2026-05-26
+- **Action**: Session 14 — Added two new Ratios challenge types: **Unit Rate** (6.RP.A.2) and **Ratio Table** (6.RP.A.3a). Unit Rate shows a ratio and asks "how many per 1?"; Ratio Table shows a 4-row table with blanks to fill. Both use numeric input (not drag-drop), have difficulty scaling, and are included in Master mode rotation. Backend CHALLENGE_STANDARD_MAP updated. CSS for `.ratio-table` added to game.css.
+- **Status**: 7 game modes live. Ratios mode now has 7 challenge types (create, partpart, partwhole, equiv, unitrate, table, master). Previous: Session 13 Battleship placement phase.
 
 ### What Exists
 - Full Flask app with 6 game modes + dashboard + shop + arcade lobby home page

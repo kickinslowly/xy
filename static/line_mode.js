@@ -368,8 +368,18 @@
     return { min, max };
   }
 
+  // Chart theme: detect dark mode from CSS variables
+  const _chartDark = (() => {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    return bg && bg.match(/^#[0-3]/);
+  })();
+  const _ct = _chartDark
+    ? { tick: '#8899aa', grid: 'rgba(255,255,255,0.06)', axis: 'rgba(255,255,255,0.25)', label: '#a7b4c8' }
+    : { tick: '#444', grid: 'rgba(0,0,0,0.06)', axis: '#000000', label: '#333' };
+
   function ensureChart() {
     if (chart) return chart;
+    const defaultFont = getComputedStyle(document.body).fontFamily;
     chart = new Chart(chartCanvas.getContext('2d'), {
       type: 'line',
       data: { datasets: [] },
@@ -381,10 +391,10 @@
         scales: {
           x: {
             type: 'linear',
-            title: { display: true, text: 'X' },
-            ticks: { color: '#444', font: { size: 12, family: getComputedStyle(document.body).fontFamily }, stepSize: 1 },
+            title: { display: true, text: 'X', color: _ct.label },
+            ticks: { color: _ct.tick, font: { size: 12, family: defaultFont } },
             grid: {
-              color: (ctx) => (ctx.tick?.value === 0 ? '#000000' : 'rgba(0,0,0,0.06)'),
+              color: (ctx) => (ctx.tick?.value === 0 ? _ct.axis : _ct.grid),
               lineWidth: (ctx) => (ctx.tick?.value === 0 ? 1.5 : 1),
             },
           },
@@ -392,10 +402,10 @@
             type: 'linear',
             beginAtZero: true,
             min: 0,
-            title: { display: true, text: 'Y' },
-            ticks: { color: '#444', font: { size: 12, family: getComputedStyle(document.body).fontFamily }, stepSize: 1 },
+            title: { display: true, text: 'Y', color: _ct.label },
+            ticks: { color: _ct.tick, font: { size: 12, family: defaultFont } },
             grid: {
-              color: (ctx) => (ctx.tick?.value === 0 ? '#000000' : 'rgba(0,0,0,0.06)'),
+              color: (ctx) => (ctx.tick?.value === 0 ? _ct.axis : _ct.grid),
               lineWidth: (ctx) => (ctx.tick?.value === 0 ? 1.5 : 1),
             },
           },
@@ -403,7 +413,7 @@
         plugins: {
           legend: {
             display: true,
-            labels: { color: '#333', font: { size: 12, family: getComputedStyle(document.body).fontFamily } },
+            labels: { color: _ct.label, font: { size: 12, family: defaultFont } },
           },
           tooltip: {
             callbacks: {
@@ -621,12 +631,12 @@
     // Axis titles and styles
     c.options.scales.x.title.display = true;
     c.options.scales.x.title.text = xAxisLabelText.value || '';
-    c.options.scales.x.title.color = xAxisLabelColor.value || '#333';
+    c.options.scales.x.title.color = xAxisLabelColor.value || _ct.label;
     c.options.scales.x.title.font = { size: clampNum(xAxisLabelSize.value, 8, 48, 24), family: xAxisLabelFont.value };
 
     c.options.scales.y.title.display = true;
     c.options.scales.y.title.text = yAxisLabelText.value || '';
-    c.options.scales.y.title.color = yAxisLabelColor.value || '#333';
+    c.options.scales.y.title.color = yAxisLabelColor.value || _ct.label;
     c.options.scales.y.title.font = { size: clampNum(yAxisLabelSize.value, 8, 48, 24), family: yAxisLabelFont.value };
 
     // Sync series table headers with axis labels
@@ -638,16 +648,16 @@
     }
 
     // Tick styling
-    c.options.scales.x.ticks.color = xTickColor.value || '#444';
+    c.options.scales.x.ticks.color = xTickColor.value || _ct.tick;
     c.options.scales.x.ticks.font = { size: clampNum(xTickSize.value, 6, 36, 12), family: xTickFont.value };
     c.options.scales.x.ticks.autoSkip = true;
-    c.options.scales.y.ticks.color = yTickColor.value || '#444';
+    c.options.scales.y.ticks.color = yTickColor.value || _ct.tick;
     c.options.scales.y.ticks.font = { size: clampNum(yTickSize.value, 6, 36, 12), family: yTickFont.value };
     c.options.scales.y.ticks.autoSkip = true;
 
     // Legend
     c.options.plugins.legend.display = !!legendDisplay.checked;
-    c.options.plugins.legend.labels.color = legendColor.value || '#333';
+    c.options.plugins.legend.labels.color = legendColor.value || _ct.label;
     c.options.plugins.legend.labels.font = { size: clampNum(legendSize.value, 8, 36, 12), family: legendFont.value };
 
     c.update();
