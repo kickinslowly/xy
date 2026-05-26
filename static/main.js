@@ -558,6 +558,7 @@
   let currentChallenge = null; // { type: 'line', m, b, label }
   let wrongTimer = null;
   let challengeCorrectCount = 0;
+  let challengeAttempted = 0;
   const challengeScoreEl = document.getElementById('challengeCorrect');
 
   // Adaptive difficulty: 0=Beginner, 1=Developing, 2=Proficient, 3=Advanced.
@@ -887,6 +888,7 @@
     challengeActive = !!on;
     if (challengeActive) {
       challengeCorrectCount = 0;
+      challengeAttempted = 0;
       if (challengeScoreEl) challengeScoreEl.textContent = '0';
       try {
         if (gridStepSelect && gridStepSelect.value !== '1') {
@@ -900,6 +902,8 @@
       if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
       hideFailToast();
       removeChallengeAnswerOverlays();
+      // Show summary modal if the student attempted at least one challenge
+      if (challengeAttempted > 0) showChallengeSummary();
     }
     if (challengeActive && !currentChallenge) {
       currentChallenge = pickRandomLine();

@@ -174,7 +174,7 @@
     if (memes.length < 2) return null; // Need two distinct memes for any ratio prompt
     let nowKind = kind || sharedState.mode || 'create';
     if (nowKind === 'master') {
-      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table'];
+      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table', 'scale', 'simplify'];
       // Anti-repeat: re-roll once if we'd repeat the previous kind. Keeps
       // master mode varied without dropping any kind from rotation.
       let pick = kinds[Math.floor(Math.random() * kinds.length)];
@@ -247,6 +247,27 @@
       }
       return { type: 'table', aSrc, bSrc, a, b, rows, blanks };
     }
+    if (nowKind === 'scale') {
+      const [aSrc, bSrc] = pick2(memes);
+      let a = rndForDifficulty(), b = rndForDifficulty();
+      if (a === b && a < 6) b = a + 1;
+      const maxMult = challengeDifficulty <= 1 ? 6 : 12;
+      const mult = rnd(2, maxMult);
+      // Randomly blank either the scaled a or scaled b
+      const blankSide = Math.random() < 0.5 ? 'a' : 'b';
+      return { type: 'scale', aSrc, bSrc, a, b, mult, blankSide, answer: blankSide === 'a' ? a * mult : b * mult };
+    }
+    if (nowKind === 'simplify') {
+      const [aSrc, bSrc] = pick2(memes);
+      // Pick a simple base ratio, then multiply by a factor
+      let a = rnd(1, 6), b = rnd(1, 6);
+      // Ensure a:b is already in simplest form (gcd=1) and not a=b
+      const g = gcd(a, b);
+      a = a / g; b = b / g;
+      if (a === b) b = (b % 6) + 1;
+      const factor = rnd(2, challengeDifficulty <= 1 ? 4 : 6);
+      return { type: 'simplify', aSrc, bSrc, simpleA: a, simpleB: b, shownA: a * factor, shownB: b * factor };
+    }
     if (nowKind === 'equiv') {
       const [aSrc, bSrc] = pick2(memes);
       let a = rndForDifficulty(), b = rndForDifficulty();
@@ -270,6 +291,75 @@
   function imgBadge(src) { return `<img src="${src}" alt="meme" style="width:28px; height:28px; object-fit:contain; vertical-align:middle; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.15); background:#fff; margin:0 4px;"/>`; }
   function challengeTextFor(ch) {
     if (!ch) return 'Loading...';
+    if (ch.type === 'scale') {
+      const scaledA = ch.a * ch.mult;
+      const scaledB = ch.b * ch.mult;
+      const leftVal = ch.blankSide === 'a' ? '?' : scaledA;
+      const rightVal = ch.blankSide === 'b' ? '?' : scaledB;
+      return `
+        <div class="rp-wrap">
+          <div class="rp-label">Scale this ratio</div>
+          <div class="ratio-prompt" role="group" aria-label="Original ratio">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers">
+              <span class="rp-num">${ch.a}</span>
+              <span class="rp-colon">:</span>
+              <span class="rp-num">${ch.b}</span>
+            </div>
+          </div>
+          <div class="rp-label" style="margin-top:10px;">Fill in the missing value</div>
+          <div class="ratio-prompt" role="group" aria-label="Scaled ratio with blank">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers" style="gap:10px;">
+              ${ch.blankSide === 'a'
+                ? `<input id="scaleInput" type="number" min="0" step="1" inputmode="numeric" placeholder="?"
+                    class="scale-input" />`
+                : `<span class="rp-num">${scaledA}</span>`}
+              <span class="rp-colon">:</span>
+              ${ch.blankSide === 'b'
+                ? `<input id="scaleInput" type="number" min="0" step="1" inputmode="numeric" placeholder="?"
+                    class="scale-input" />`
+                : `<span class="rp-num">${scaledB}</span>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    if (ch.type === 'simplify') {
+      return `
+        <div class="rp-wrap">
+          <div class="rp-label">Simplify this ratio</div>
+          <div class="ratio-prompt" role="group" aria-label="Ratio to simplify">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers">
+              <span class="rp-num">${ch.shownA}</span>
+              <span class="rp-colon">:</span>
+              <span class="rp-num">${ch.shownB}</span>
+            </div>
+          </div>
+          <div class="rp-label" style="margin-top:10px;">Your simplified ratio</div>
+          <div class="simplify-inputs" role="group" aria-label="Enter simplified ratio">
+            <input id="simplifyA" type="number" min="1" step="1" inputmode="numeric" placeholder="?"
+              class="scale-input" />
+            <span class="rp-colon">:</span>
+            <input id="simplifyB" type="number" min="1" step="1" inputmode="numeric" placeholder="?"
+              class="scale-input" />
+          </div>
+        </div>
+      `;
+    }
     if (ch.type === 'equiv') {
       return `
         <div class="rp-wrap">
@@ -420,7 +510,7 @@
   function updateLayoutForCurrent() {
     if (!board) return;
     const t = sharedState.current && sharedState.current.type;
-    if (t === 'partwhole' || t === 'unitrate' || t === 'table') {
+    if (t === 'partwhole' || t === 'unitrate' || t === 'table' || t === 'scale' || t === 'simplify') {
       board.style.display = 'none';
     } else {
       board.style.display = '';
@@ -547,6 +637,33 @@
         return;
       }
       correct = allCorrect;
+    } else if (ch.type === 'scale') {
+      const inp = qs('#scaleInput');
+      const val = parseInt(inp && inp.value, 10);
+      if (Number.isNaN(val)) {
+        showToast('Enter a number');
+        _submitLock = false;
+        return;
+      }
+      correct = val === ch.answer;
+    } else if (ch.type === 'simplify') {
+      const inpA = qs('#simplifyA');
+      const inpB = qs('#simplifyB');
+      const valA = parseInt(inpA && inpA.value, 10);
+      const valB = parseInt(inpB && inpB.value, 10);
+      if (Number.isNaN(valA) || Number.isNaN(valB)) {
+        showToast('Enter both numbers');
+        _submitLock = false;
+        return;
+      }
+      if (valA <= 0 || valB <= 0) {
+        correct = false;
+      } else {
+        // Must be equivalent to the shown ratio AND fully simplified (gcd = 1)
+        const isEquiv = valA * ch.shownB === valB * ch.shownA;
+        const isSimplest = gcd(valA, valB) === 1;
+        correct = isEquiv && isSimplest;
+      }
     } else if (ch.type === 'partwhole') {
       const which = ch.which === 'b' ? 'b' : 'a'; // default to 'a' for older states
       const partInput = qs('#pwPartInput');
@@ -636,6 +753,8 @@
       case 'equiv': return 'Equivalent Ratio';
       case 'unitrate': return 'Unit Rate';
       case 'table': return 'Ratio Table';
+      case 'scale': return 'Scale a Ratio';
+      case 'simplify': return 'Simplify a Ratio';
       case 'master': return 'Master of Ratios';
       default: return 'Ratios';
     }

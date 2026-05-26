@@ -2149,7 +2149,32 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .game-sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: 28vh;
+    max-height: 20vh;
+    overflow-y: auto;
+  }
+  /* Battleship/Meme Wars: collapse sidebar to minimal strip on mobile */
+  .mode-battleship .game-sidebar,
+  .mode-meme-wars .game-sidebar {
+    max-height: none;
+    padding: 6px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .mode-battleship .game-sidebar .game-card,
+  .mode-meme-wars .game-sidebar .game-card {
+    flex: 1 1 auto;
+    min-width: 140px;
+  }
+  .mode-battleship .game-sidebar .dash-card .dash-pills,
+  .mode-meme-wars .game-sidebar .dash-card .dash-pills {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  /* Line mode: give more room to data tables */
+  .mode-lines .game-sidebar {
+    max-height: 35vh;
   }
   .mode-lines .game-layout {
     grid-template-columns: 1fr;
@@ -2170,6 +2195,11 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .fire-btn { font-size: 14px; padding: 8px 14px; }
   .board { --cell: clamp(24px, 7.5vw, 42px); }
   .game-main { padding: var(--gap-sm); }
+  /* Subitize: wrap pills and toggles on small screens */
+  .subitize-toolbar-left .mode-pills { gap: 3px; }
+  .subitize-toolbar-left .mode-pill { padding: 5px 8px; font-size: 11px; }
+  .subitize-toolbar-right { flex-wrap: wrap; gap: 4px; }
+  .subitize-toolbar-right .mode-pill { font-size: 11px; padding: 5px 8px; }
 }
 
 /* ---- 20. Coordinate Plane Specifics ---- */

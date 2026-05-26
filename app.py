@@ -796,7 +796,9 @@ CHALLENGE_STANDARD_MAP = {
     ('ratios', 'equiv'):       ['6.RP.A.3', '6.RP.A.3a'],
     ('ratios', 'unitrate'):    ['6.RP.A.2', '6.RP.A.3'],
     ('ratios', 'table'):       ['6.RP.A.3', '6.RP.A.3a'],
-    ('ratios', 'master'):      ['6.RP.A.1', '6.RP.A.3', '6.RP.A.2'],
+    ('ratios', 'scale'):       ['7.RP.A.2', '6.RP.A.3'],
+    ('ratios', 'simplify'):    ['6.RP.A.1'],
+    ('ratios', 'master'):      ['6.RP.A.1', '6.RP.A.3', '6.RP.A.2', '7.RP.A.2'],
     ('ratios', 'ratio'):       ['6.RP.A.1'],
     # Battleship / Meme Wars (coordinate grid navigation)
     ('battleship', 'battleship'): ['5.G.A.1', '6.NS.C.6b'],
@@ -1206,6 +1208,7 @@ def ensure_achievements_seed():
 
     # Cross-mode achievements (exploration, streak, mastery)
     cross_mode_achievements = [
+        ('first_game', 'Welcome Aboard!', 'Complete your very first challenge', None, 1),
         ('explore_3', 'Renaissance Explorer', 'Play at least 3 different game modes', None, 3),
         ('explore_all', 'Renaissance Master', 'Play all 7 game modes', None, 7),
         ('streak_5', 'On Fire', 'Get 5 correct answers in a row (any mode)', None, 5),
@@ -1372,7 +1375,7 @@ def record_result():
             if a.code.startswith('explore_'):
                 modes_played = db.session.query(GameResult.mode).filter_by(user_id=g.user_id).distinct().count()
                 met = modes_played >= a.threshold
-            elif a.code.startswith('total_'):
+            elif a.code.startswith('total_') or a.code == 'first_game':
                 total_all = db.session.query(func.count(GameResult.id)).filter(
                     GameResult.user_id == g.user_id,
                     (GameResult.outcome == None) | (GameResult.outcome.in_(list(SUCCESS_OUTCOMES)))

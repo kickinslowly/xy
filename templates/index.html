@@ -237,6 +237,20 @@
       <div class="fail-text"><strong>Ah ah ah!</strong> Not quite!</div>
     </div>
   </div>
+
+  <!-- Challenge summary modal -->
+  <div class="modal challenge-summary" id="challengeSummary" role="dialog" aria-modal="true" aria-labelledby="summaryTitle" tabindex="-1" hidden>
+    <div class="panel summary-panel">
+      <h2 id="summaryTitle" class="summary-title">Challenge Complete!</h2>
+      <div class="summary-stats">
+        <div class="summary-stat"><span class="summary-num" id="summaryCorrect">0</span><span class="summary-label">Correct</span></div>
+        <div class="summary-stat"><span class="summary-num" id="summaryTotal">0</span><span class="summary-label">Attempted</span></div>
+        <div class="summary-stat"><span class="summary-num" id="summaryAccuracy">0%</span><span class="summary-label">Accuracy</span></div>
+        <div class="summary-stat"><span class="summary-num" id="summaryDifficulty">&mdash;</span><span class="summary-label">Difficulty</span></div>
+      </div>
+      <button id="summaryClose" class="btn-3d success" type="button">Nice!</button>
+    </div>
+  </div>
 {% endblock %}
 
 {% block extra_scripts %}
