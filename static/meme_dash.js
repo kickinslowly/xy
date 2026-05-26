@@ -1255,16 +1255,25 @@
       }
     }
 
-    // 3) Meme collection (normal overlap with any player, including magnetized one)
+    // 3) Meme collection — local player gets math gate, others collect instantly
     const remaining = [];
     for (const m of state.memes) {
+      if (m._gated) { remaining.push(m); continue; }
       let collectedBy = null;
       for (const id of Object.keys(state.players)) {
         const p = state.players[id];
         if (rectOverlap(p.x, p.y, p.w, p.h, m.x-14, m.y-14, 28, 28)) { collectedBy = p; break; }
       }
       if (collectedBy) {
-        onCollect(collectedBy, m);
+        if (collectedBy.id === myId && !_mathGateActive) {
+          m._gated = true;
+          remaining.push(m);
+          showMathGate(collectedBy, m);
+        } else if (collectedBy.id !== myId) {
+          onCollect(collectedBy, m);
+        } else {
+          remaining.push(m);
+        }
       } else {
         remaining.push(m);
       }
@@ -1288,6 +1297,92 @@
         }
       }
     }
+  }
+
+  // Math Gate system
+  const mathGateEl = document.getElementById('mathGate');
+  const mathGateProblem = document.getElementById('mathGateProblem');
+  const mathGateInput = document.getElementById('mathGateInput');
+  let _mathGateActive = false;
+  let _mathGateTimer = null;
+  let _mathGateMeme = null;
+  let _mathGatePlayer = null;
+  let _mathGateAnswer = null;
+
+  function generateMathProblem() {
+    const ops = ['+', '-', '×'];
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    let a, b, answer;
+    if (op === '×') {
+      a = 2 + Math.floor(Math.random() * 9);
+      b = 2 + Math.floor(Math.random() * 9);
+      answer = a * b;
+    } else if (op === '+') {
+      a = 5 + Math.floor(Math.random() * 45);
+      b = 5 + Math.floor(Math.random() * 45);
+      answer = a + b;
+    } else {
+      answer = 2 + Math.floor(Math.random() * 30);
+      b = 2 + Math.floor(Math.random() * 20);
+      a = answer + b;
+    }
+    return { text: `${a} ${op} ${b} = `, answer };
+  }
+
+  function showMathGate(player, meme) {
+    if (!mathGateEl) { onCollect(player, meme); removeMeme(meme); return; }
+    _mathGateActive = true;
+    _mathGateMeme = meme;
+    _mathGatePlayer = player;
+    const prob = generateMathProblem();
+    _mathGateAnswer = prob.answer;
+    mathGateProblem.textContent = prob.text;
+    mathGateInput.value = '';
+    mathGateEl.hidden = false;
+    mathGateEl.className = 'math-gate';
+    mathGateInput.focus();
+    _mathGateTimer = setTimeout(() => closeMathGate(false), 5000);
+  }
+
+  function closeMathGate(correct) {
+    if (_mathGateTimer) { clearTimeout(_mathGateTimer); _mathGateTimer = null; }
+    if (!_mathGateActive) return;
+    const meme = _mathGateMeme;
+    const player = _mathGatePlayer;
+    _mathGateActive = false;
+    _mathGateMeme = null;
+    _mathGatePlayer = null;
+
+    if (correct && meme && player) {
+      mathGateEl.className = 'math-gate correct';
+      try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
+      onCollect(player, meme);
+      removeMeme(meme);
+    } else {
+      mathGateEl.className = 'math-gate incorrect';
+      try { if (window.SoundFX) window.SoundFX.play('fail'); } catch(_){}
+      if (meme) {
+        meme._gated = false;
+        meme.x += (Math.random() - 0.5) * 200;
+        meme.y -= 60 + Math.random() * 80;
+      }
+    }
+    setTimeout(() => { mathGateEl.hidden = true; }, 400);
+  }
+
+  function removeMeme(meme) {
+    if (state && state.memes) {
+      state.memes = state.memes.filter(m => m !== meme);
+    }
+  }
+
+  if (mathGateInput) {
+    mathGateInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && _mathGateActive) {
+        const val = parseInt(mathGateInput.value, 10);
+        closeMathGate(val === _mathGateAnswer);
+      }
+    });
   }
 
   function onCollect(p, meme){

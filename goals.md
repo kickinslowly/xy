@@ -17,7 +17,7 @@
 - ✅ Subitize mode mapped to 5.OA.A.1, 5.NBT.B.5, 5.NBT.B.6, 6.NS.B.2
 
 ### Active Tasks
-- 🔲 **Line Graph has zero standards tracking** — never calls recordResult (B3). Build challenge system + wire to standards pipeline
+- ✅ **Line Graph has zero standards tracking** — never calls recordResult (B3). Build challenge system + wire to standards pipeline
 - 🔲 **Meme Dash maps to no standards** — `('memedash', 'memedash'): []`. Add math content first (G5), then map
 - 🔲 **Uncovered standard domains**: 6.EE (Expressions & Equations), 7.G (Geometry — area/volume), 7.SP/8.SP (Statistics), 7.NS (Rational number operations)
 - 🔲 Standards coverage dashboard for teachers (G6 dependency)
@@ -34,12 +34,12 @@
 - ✅ Extracted to `adaptive_difficulty.js` with localStorage persistence
 
 ### Active Tasks — Bugs
-- 🔲 **BUG B1**: `adaptive_difficulty.js` not loaded in coord plane `index.html` — difficulty stuck at Developing forever
-- 🔲 **BUG B2**: `DIFF_LABELS` undefined in `ratios_mode.js:432,455` — difficulty data silently lost on every recordResult
-- 🔲 **BUG B3**: Line Graph mode never calls `recordResult` — zero XP/coins/mastery/dashboard tracking
+- ✅ **BUG B1**: `adaptive_difficulty.js` not loaded in coord plane `index.html` — difficulty stuck at Developing forever
+- ✅ **BUG B2**: `DIFF_LABELS` undefined in `ratios_mode.js:432,455` — difficulty data silently lost on every recordResult
+- ✅ **BUG B3**: Line Graph mode never calls `recordResult` — zero XP/coins/mastery/dashboard tracking
 
 ### Active Tasks — Features
-- 🔲 Load adaptive difficulty in Line Graph mode (script not even included)
+- ✅ Load adaptive difficulty in Line Graph mode (script not even included)
 - 🔲 Spaced repetition: resurface decaying skills
 - 🔲 Smart recommendations: "Try Ratio Master next — you're close to mastering equivalent ratios!"
 - 🔲 Teacher mastery heatmap: class-wide view (G6 dependency)
@@ -60,14 +60,11 @@
 - ✅ Coin/standards toasts on game completion
 
 ### Active Tasks — Bugs
-- 🔲 **BUG B11**: Achievement unlock notifications never shown — earned silently in API response, no toast/celebration
-- 🔲 **BUG B9**: Subitize streak not reset on operation switch
+- ✅ **BUG B11**: Achievement unlock notifications never shown — earned silently in API response, no toast/celebration
+- ✅ **BUG B9**: Subitize streak not reset on operation switch
 
 ### Active Tasks — Sound System (NEW — affects all modes)
-- 🔲 Add Howler.js (7KB gz) for sound effects across all modes
-- 🔲 Shared sound manifest: click, success, fail, coins, levelup, turn, collect
-- 🔲 Mute toggle in nav bar
-- 🔲 Load lazily on first interaction (autoplay policy)
+- ✅ Web Audio API synthesis sound system (sound.js), 15 effects, mute toggle, all modes integrated
 
 ### Active Tasks — Celebration Effects (NEW)
 - 🔲 Add canvas-confetti (3KB gz) for correct answers, bigger bursts on streaks
@@ -99,12 +96,12 @@
 - ✅ Per-mode layout redesigns (G4-M1 through G4-M5)
 
 ### Active Tasks — Touch Support (NEW — Critical)
-- 🔲 **Coord Plane**: Zero touch events. Migrate to Pointer Events (pointerdown/move/up). Enables iPad/Chromebook.
-- 🔲 **Meme Dash**: No touch controls. Add virtual joystick or left/right half-screen touch zones.
-- 🔲 **Meme Dash**: Responsive canvas (hardcoded 1100x640). Add ResizeObserver scaling.
+- ✅ **Coord Plane**: Touch/pointer events + pinch-to-zoom + two-finger pan. Enables iPad/Chromebook.
+- ✅ **Meme Dash**: Touch controls added.
+- ✅ **Meme Dash**: Responsive canvas added.
 
 ### Active Tasks — Mobile Layout (NEW)
-- 🔲 Nav bar overflows at 768-1100px with 9 links. Group links or use icons.
+- ✅ Mobile nav horizontal scroll.
 - 🔲 Coord Plane sidebars completely vanish on mobile (no undo, vertex list, line info). Replace with bottom sheet/FAB.
 - 🔲 Battleship/Meme Wars 240px sidebar doesn't collapse — board unplayably small on phones.
 - 🔲 Line Graph sidebar at 28vh — data tables unusable on tablets.
@@ -117,9 +114,9 @@
 - 🔲 Empty states should be motivating: "Play your first game to start earning achievements!"
 
 ### Active Tasks — Visual Polish (NEW)
-- 🔲 Canvas dark mode: Coord plane + Line Graph canvases hardcoded white against dark UI
-- 🔲 Line Graph chart colors hardcoded to light theme (Chart.js doesn't inherit CSS vars)
-- 🔲 `prefers-reduced-motion` missing from game.css (2689 LOC of animations)
+- ✅ Canvas dark mode: Coord plane canvas dark mode
+- ✅ Line Graph dark theme chart
+- ✅ `prefers-reduced-motion` in game.css
 - 🔲 Light mode is broken: token overrides exist but hardcoded dark colors everywhere
 - 🔲 Extract ~900 lines of inline CSS from home/dashboard/shop templates to cacheable files
 - 🔲 Page transitions via View Transitions API (smooth cross-fades between modes)
@@ -136,20 +133,20 @@
 - ✅ 7 game modes: Coord Plane (6 challenge types), Line Graph (sandbox), Battleship, Meme Wars, Meme Dash, Ratios (5 types), Subitize (5 ops)
 
 ### Active Tasks — Subitize Upgrades (NEW — Session 12)
-- 🔲 **Flash mode** (P0): Show dots for 1-3s, blur/cover, then ask. Without this it's counting, not subitizing.
-- 🔲 Remove parenthetical spoilers from question text ("4 groups x 3 each" gives away the answer)
-- 🔲 Structured dot patterns for 7-9 (replace circular fallback that defeats subitizing)
-- 🔲 Ten-frame visualization mode (2x5 grid — most researched subitizing scaffold)
+- ✅ **Flash mode**: Show dots for 1-3s, blur/cover, then ask.
+- ✅ Remove parenthetical spoilers from question text ("4 groups x 3 each" gives away the answer)
+- ✅ Structured dot patterns for 7-9 (replace circular fallback that defeats subitizing)
+- ✅ Ten-frame visualization mode (2x5 grid — most researched subitizing scaffold)
 - 🔲 Array model for multiplication (rows x columns alongside groups view)
 - 🔲 Perceptual vs Conceptual toggle: "Quick See" (1-5) vs "Group See" (6-12, composite patterns)
 - 🔲 Animated regrouping: dots flow into merged group after correct addition
 - 🔲 Number line connection: show where answer falls on number line
 
 ### Active Tasks — Line Graph "Line Detective" (NEW)
-- 🔲 Build challenge system with recordResult integration:
-  1. Slope Finder: Given two points, type the slope (8.EE.B.5)
-  2. Equation Builder: Given a visual line, enter y = mx + b (8.F.A.3)
-  3. Point Predictor: Given equation + x, predict y (8.F.B.5)
+- ✅ Build challenge system with recordResult integration:
+  1. ✅ Slope Finder: Given two points, type the slope (8.EE.B.5)
+  2. ✅ Equation Builder: Given a visual line, enter y = mx + b (8.F.A.3)
+  3. ✅ Point Predictor: Given equation + x, predict y (8.F.B.5)
   4. Data Match: Given scenario, build matching data table (8.F.B.4)
   5. Best Fit: Adjust m/b sliders to fit scatter data (8.SP.A.2)
   6. Rate of Change: Identify steepest interval (8.F.B.5)
@@ -159,14 +156,14 @@
 - 🔲 Comparison mode: two series, "which is steeper?", "where do they intersect?"
 
 ### Active Tasks — Ratios Depth (NEW)
-- 🔲 **Unit Rates** (6.RP.A.2): "How many fish per cat?" — biggest standards gap
-- 🔲 **Ratio Tables**: Partially-filled table with blanks to fill in
+- ✅ **Unit Rates** (6.RP.A.2): "How many fish per cat?" — biggest standards gap
+- ✅ **Ratio Tables**: Partially-filled table with blanks to fill in
 - 🔲 **Tape Diagrams**: SVG proportional bars showing relative magnitude
 - 🔲 **Scaling** (7.RP.A.2): "If 3:5, what is ?:15?"
 - 🔲 **Simplifying Ratios**: Use existing dead `gcd()` function
 - 🔲 **Comparing Ratios**: "Which ratio is greater?"
 - 🔲 **Real-World Contexts**: Recipes, maps, unit pricing, speed/distance/time
-- 🔲 **Grouped drop zones**: Split board into Side A / Side B with running count badges
+- ✅ **Grouped drop zones**: Split board into Side A / Side B with running count badges (board counter with live "3 : 4" display)
 - 🔲 **Animated proportional scaling**: After correct equiv, animate both ratios to unit rate
 
 ### Active Tasks — Coord Plane New Challenges (NEW)
@@ -181,7 +178,7 @@
 - 🔲 Challenge "worlds": Themed tracks (Quadrant Explorer, Mirror Master, Slope Surfer) with progression
 
 ### Active Tasks — Battleship/Meme Wars Math (NEW)
-- 🔲 **Manual ship/meme placement**: Drag to grid coordinates = direct coordinate practice. #1 missed math opportunity.
+- ✅ **Manual ship/meme placement**: Battleship ship placement phase added.
 - 🔲 **Math-problem shields**: Hit a cell → solve problem to confirm hit. Wrong = deflected.
 - 🔲 **Four-quadrant grid**: Extend to (-5,-5)→(5,5). Teaches 6.NS.C.6 negative coordinates.
 - 🔲 **Coordinate notation training**: Force typing (x, y) format to fire
@@ -227,19 +224,19 @@
 - ✅ Coord plane collaborative drawing
 
 ### Active Tasks — Bugs
-- 🔲 **BUG B4**: Meme Wars lobby missing Join Team A/B buttons — players stuck as spectators
-- 🔲 **BUG B5**: Bot `performBotMove` doesn't increment `shotSeq` — desync risk
-- 🔲 **BUG B6**: Meme Wars bot shots logged under human's clientId — inflated personal stats
+- ✅ **BUG B4**: Meme Wars lobby missing Join Team A/B buttons — players stuck as spectators
+- ✅ **BUG B5**: Bot `performBotMove` doesn't increment `shotSeq` — desync risk
+- ✅ **BUG B6**: Meme Wars bot shots logged under human's clientId — inflated personal stats
 
 ### Active Tasks — Features
-- 🔲 Ship sunk callout in Battleship ("You sunk the Cruiser!")
+- ✅ Ship sunk callout in Battleship ("You sunk the Cruiser!")
 - 🔲 Turn timer (30/60/90s) with auto-skip — prevents stalling
 - 🔲 Rematch with score tracking ("Best of 3: You 1 - Opponent 0")
 - 🔲 Meme Dash opponent scoreboard (can't see others' progress)
 - 🔲 Meme Dash ghost player cleanup (disconnected players persist forever)
 - 🔲 Coord plane real-time competitive challenges (teacher shares PIN, students race)
 - 🔲 Friend challenge links (pre-filled room code)
-- 🔲 Spectator improvements: team labels on boards, better view
+- ✅ Meme Wars team rosters wired / spectator team labels
 
 ---
 
@@ -256,9 +253,9 @@
 - ✅ Backend perf: User.total_xp, leaderboard cache, dashboard GROUP BY
 
 ### Active Tasks — Bugs (from Session 12 audit)
-- 🔲 **BUG B7**: Line Graph `toFractionApprox` is stale copy — displays 333333/1000000 instead of 1/3
-- 🔲 **BUG B8**: Line Graph `stepSize: 1` hardcoded — breaks at large ranges
-- 🔲 **BUG B10**: Ratios submit has no debounce — fast double-click double-scores
+- ✅ **BUG B7**: Line Graph `toFractionApprox` is stale copy — displays 333333/1000000 instead of 1/3
+- ✅ **BUG B8**: Line Graph `stepSize: 1` hardcoded — breaks at large ranges
+- ✅ **BUG B10**: Ratios submit has no debounce — fast double-click double-scores
 - 🔲 Meme Wars `cssUrl` dead code (both branches return empty string, `meme_wars.js:876`)
 - 🔲 Battleship dead variables (`before` at line 551, `letters` at line 773)
 - 🔲 Meme Dash power-up kill hitbox doesn't account for 1.6x rendered scale
@@ -286,7 +283,7 @@
 - 🔲 Streak computation: use student's local TZ, track `best_streak` historically
 
 ### Active Tasks — New (Session 12)
-- 🔲 Meme Dash: coyote time (80ms grace after leaving edge) + jump buffer (100ms before landing)
+- ✅ Meme Dash: coyote time (80ms grace after leaving edge) + jump buffer (100ms before landing)
 - 🔲 Meme Dash: variable jump height (cut velocity on button release)
 - 🔲 PWA: Service worker + manifest.json for Chromebook install + offline shell cache
 - 🔲 Add favicon, theme-color meta, apple-touch-icon

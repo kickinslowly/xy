@@ -7,6 +7,13 @@
   <div class="container">
     <h1 class="hero-title">Mr. A's Math Tools</h1>
     <p class="hero-sub">Pick a game. Learn some math. Have fun.</p>
+    <!-- Welcome banner for new/unauthenticated users -->
+    <div id="welcomeBanner" class="welcome-banner" hidden>
+      <p class="welcome-text">Sign in to save your progress, earn XP, and unlock rewards!</p>
+      {% if GOOGLE_CLIENT_ID %}
+      <div class="g_id_signin welcome-signin" data-type="standard" data-size="large" data-text="sign_in_with" data-shape="pill"></div>
+      {% endif %}
+    </div>
     <!-- Player stats row: streak + XP + daily goal -->
     <div id="playerStats" class="player-stats" hidden>
       <div class="stat-card streak-card" id="streakCard">
@@ -310,6 +317,26 @@ body.page-home {
   margin: 8px 0 0;
   font-weight: 500;
 }
+
+.welcome-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding: 16px 24px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 12px;
+}
+.welcome-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+.welcome-signin { flex-shrink: 0; }
 
 /* Arcade grid */
 .arcade { padding-bottom: 48px; }
@@ -899,9 +926,21 @@ body.page-home {
     } catch(e) { /* silent */ }
   }
 
-  function loadAll(){ loadStats(); loadLeaderboard(); }
+  function loadAll(){
+    const token = localStorage.getItem('token');
+    const wb = document.getElementById('welcomeBanner');
+    if (wb) wb.hidden = !!token;
+    loadStats();
+    loadLeaderboard();
+  }
   document.addEventListener('DOMContentLoaded', loadAll);
   document.addEventListener('app:auth', loadAll);
+  document.addEventListener('app:logout', () => {
+    const wb = document.getElementById('welcomeBanner');
+    if (wb) wb.hidden = false;
+    const ps = document.getElementById('playerStats');
+    if (ps) ps.hidden = true;
+  });
 })();
 </script>
 {% endblock %}

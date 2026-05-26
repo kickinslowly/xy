@@ -799,8 +799,8 @@ CHALLENGE_STANDARD_MAP = {
     # Battleship / Meme Wars (coordinate grid navigation)
     ('battleship', 'battleship'): ['5.G.A.1', '6.NS.C.6b'],
     ('memewars', 'memewars'):     ['5.G.A.1', '6.NS.C.6b'],
-    # Meme Dash (spatial reasoning, no formal standard)
-    ('memedash', 'memedash'):     [],
+    # Meme Dash (math gates + spatial reasoning)
+    ('memedash', 'memedash'):     ['5.OA.A.1', '5.NBT.B.5'],
     # Subitize (operations via visual grouping)
     ('subitize', 'multiply'):     ['5.NBT.B.5', '5.OA.A.1'],
     ('subitize', 'add'):          ['5.OA.A.1'],
