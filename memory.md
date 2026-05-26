@@ -4,8 +4,8 @@
 
 ### Last Action
 - **Date**: 2026-05-26
-- **Action**: Session 14 — Added two new Ratios challenge types: **Unit Rate** (6.RP.A.2) and **Ratio Table** (6.RP.A.3a). Unit Rate shows a ratio and asks "how many per 1?"; Ratio Table shows a 4-row table with blanks to fill. Both use numeric input (not drag-drop), have difficulty scaling, and are included in Master mode rotation. Backend CHALLENGE_STANDARD_MAP updated. CSS for `.ratio-table` added to game.css.
-- **Status**: 7 game modes live. Ratios mode now has 7 challenge types (create, partpart, partwhole, equiv, unitrate, table, master). Previous: Session 13 Battleship placement phase.
+- **Action**: Sessions 12-14 marathon. Built subitize mode, ran 7-agent product audit, executed Phases 1-4 of development plan. Key deliverables: sound system (15 effects), Line Detective challenges, Battleship ship placement, coord plane touch support, ratios unit rates + tables, subitize flash + ten-frame, Meme Dash math gates + touch controls + coyote time, dark-mode canvases, PWA manifest, onboarding welcome banner, mobile nav fix, reduced-motion a11y, pre-loaded datasets, achievement toast.
+- **Status**: 7 game modes live. 11 critical bugs fixed. All modes have sound, standards, adaptive difficulty. Ratios has 7 challenge types. Line Graph has 3 challenge types. Phase 5 (teacher dashboard, backend blueprints, inline CSS extraction) remains.
 
 ### What Exists
 - Full Flask app with 6 game modes + dashboard + shop + arcade lobby home page
