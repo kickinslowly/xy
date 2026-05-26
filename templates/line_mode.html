@@ -11,6 +11,7 @@
       <div class="line-toolbar-left">
         <button id="addSeriesBtn" class="btn-3d" type="button">+ Add Series</button>
         <button id="sampleDataBtn" class="btn-3d warn" type="button" title="Load a sample dataset">Sample Data</button>
+        <button id="pasteDataBtn" class="btn-light" type="button" title="Paste data from spreadsheet">Paste Data</button>
         <button id="exportPdfBtn" class="btn-light" type="button">Export PDF</button>
       </div>
 
@@ -185,6 +186,18 @@
   </main>
 
   {% include '_qr_modal.html' %}
+
+  <div class="modal paste-modal" id="pasteModal" role="dialog" aria-modal="true" aria-labelledby="pasteTitle" tabindex="-1" hidden>
+    <div class="panel paste-panel">
+      <h2 id="pasteTitle">Paste Data</h2>
+      <p class="paste-hint">Paste two columns from Google Sheets, Excel, or any spreadsheet. Tab or comma separated.</p>
+      <textarea id="pasteArea" class="paste-area" rows="8" placeholder="1&#9;5&#10;2&#9;10&#10;3&#9;15&#10;4&#9;20" aria-label="Paste data here"></textarea>
+      <div class="paste-actions">
+        <button id="pasteImportBtn" class="btn-3d success" type="button">Import</button>
+        <button id="pasteCancelBtn" class="btn-light" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
 {% endblock %}
 
 {% block extra_scripts %}

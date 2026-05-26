@@ -3338,3 +3338,49 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .slider-row { grid-template-columns: 70px 1fr 36px; gap: 6px; }
   .slider-equation { font-size: 16px; }
 }
+
+/* ---- 30. Paste Data Modal ---- */
+.paste-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+}
+.paste-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 480px;
+  width: 90%;
+}
+.paste-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 4px 0 12px;
+}
+.paste-area {
+  width: 100%;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  resize: vertical;
+}
+.paste-area:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.paste-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}

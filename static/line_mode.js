@@ -349,6 +349,36 @@
     });
   }
 
+  // CSV/TSV paste import
+  const pasteBtn = qs('#pasteDataBtn');
+  const pasteModal = qs('#pasteModal');
+  const pasteArea = qs('#pasteArea');
+  const pasteImportBtn = qs('#pasteImportBtn');
+  const pasteCancelBtn = qs('#pasteCancelBtn');
+
+  if (pasteBtn && pasteModal) {
+    pasteBtn.addEventListener('click', () => {
+      pasteModal.hidden = false;
+      if (pasteArea) { pasteArea.value = ''; pasteArea.focus(); }
+    });
+    if (pasteCancelBtn) pasteCancelBtn.addEventListener('click', () => { pasteModal.hidden = true; });
+    if (pasteImportBtn) pasteImportBtn.addEventListener('click', () => {
+      const raw = (pasteArea ? pasteArea.value : '').trim();
+      if (!raw) return;
+      const rows = raw.split(/\n/).map(line => {
+        const parts = line.split(/[\t,;]+/).map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          const x = parseFloat(parts[0]), y = parseFloat(parts[1]);
+          if (Number.isFinite(x) && Number.isFinite(y)) return [x, y];
+        }
+        return null;
+      }).filter(Boolean);
+      if (!rows.length) return;
+      loadSampleDataset({ name: 'Imported', xLabel: 'X', yLabel: 'Y', color: '#06b6d4', points: rows });
+      pasteModal.hidden = true;
+    });
+  }
+
   function gatherSeriesData() {
     /** @type {{label:string, color:string, width:number, points:{x:number,y:number,_rowId?:string}[]}[]} */
     const result = [];
