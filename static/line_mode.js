@@ -305,6 +305,50 @@
     emptyHintEl.hidden = allSeries.size > 0;
   }
 
+  // Pre-loaded sample datasets
+  const SAMPLE_DATASETS = [
+    { name: 'Plant Growth', xLabel: 'Day', yLabel: 'Height (cm)', color: '#22c55e',
+      points: [[1,2],[2,4],[3,5],[4,8],[5,10],[6,13],[7,15]] },
+    { name: 'Temperature', xLabel: 'Hour', yLabel: 'Temp (°F)', color: '#ef4444',
+      points: [[6,58],[8,62],[10,70],[12,78],[14,82],[16,80],[18,74],[20,66]] },
+    { name: 'Pizza Sales', xLabel: 'Week', yLabel: 'Pizzas Sold', color: '#f59e0b',
+      points: [[1,12],[2,18],[3,15],[4,22],[5,28],[6,25],[7,30],[8,35]] },
+    { name: 'Distance Run', xLabel: 'Minute', yLabel: 'Distance (m)', color: '#7a5cff',
+      points: [[0,0],[1,120],[2,240],[3,360],[4,480],[5,600]] },
+  ];
+
+  function loadSampleDataset(ds) {
+    const id = createSeriesCard();
+    const entry = allSeries.get(id);
+    if (!entry) return;
+    if (entry.labelEl) entry.labelEl.value = ds.name;
+    if (entry.colorEl) entry.colorEl.value = ds.color;
+    if (xAxisLabelText) xAxisLabelText.value = ds.xLabel;
+    if (yAxisLabelText) yAxisLabelText.value = ds.yLabel;
+    const tbody = entry.tbodyEl;
+    for (const [x, y] of ds.points) {
+      const tr = document.createElement('tr');
+      const rowId = 'R' + (rowIdSeq++);
+      tr.setAttribute('data-row-id', rowId);
+      const rowNum = tbody.children.length + 1;
+      tr.innerHTML = '<td class="row-num"><input type="checkbox" class="select-point" aria-label="Select row ' + rowNum + '" /><span class="row-num-label">' + rowNum + '</span></td>' +
+        '<td><input type="number" step="any" class="cell-x" value="' + x + '" aria-label="X value"></td>' +
+        '<td><input type="number" step="any" class="cell-y" value="' + y + '" aria-label="Y value"></td>' +
+        '<td class="row-del"><button type="button" class="del-row" aria-label="Delete row" title="Delete row">&times;</button></td>';
+      tbody.appendChild(tr);
+    }
+    updateChart();
+    updateEmptyHint();
+  }
+
+  const sampleBtn = qs('#sampleDataBtn');
+  if (sampleBtn) {
+    sampleBtn.addEventListener('click', () => {
+      const ds = SAMPLE_DATASETS[Math.floor(Math.random() * SAMPLE_DATASETS.length)];
+      loadSampleDataset(ds);
+    });
+  }
+
   function gatherSeriesData() {
     /** @type {{label:string, color:string, width:number, points:{x:number,y:number,_rowId?:string}[]}[]} */
     const result = [];
