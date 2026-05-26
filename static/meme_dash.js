@@ -46,18 +46,172 @@
   const MEME_SET = ALL_IMAGES.slice(0, 5); // pick first 5 to define types in this session
   const imageCache = new Map();
 
-  // Fixed level platforms (x,y,w,h) in canvas pixels
+  // Level platforms (x,y,w,h) in canvas pixels — procedurally generated each round
   const W = canvas.width;
   const H = canvas.height;
   const FLOOR_Y = H - 40;
-  const platforms = [
-    { x: 40,  y: FLOOR_Y - 80, w: 180, h: 16 },
-    { x: 360, y: FLOOR_Y - 140, w: 180, h: 16 },
-    { x: 680, y: FLOOR_Y - 210, w: 180, h: 16 },
-    { x: 920, y: FLOOR_Y - 100, w: 140, h: 16 },
-    { x: 240, y: FLOOR_Y - 260, w: 140, h: 16 },
-    { x: 540, y: FLOOR_Y - 320, w: 200, h: 16 },
-  ];
+
+  // --- Seeded RNG ---
+  function seededRandom(seed) {
+    let s = seed | 0;
+    return function() {
+      s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
+      return (s >>> 0) / 0xFFFFFFFF;
+    };
+  }
+  function hashString(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h) || 1;
+  }
+
+  // --- Procedural level generator ---
+  function generatePlatforms(seed) {
+    const rng = seededRandom(seed);
+    const PLAT_H = 16;
+    const MIN_X = 20, MAX_X = W - 20;
+    const MIN_Y = 80, MAX_Y = FLOOR_Y - 60;
+    // Jump physics constraints
+    const MAX_JUMP_H = 122;  // JUMP_VELOCITY^2 / (2*GRAVITY) = 122.5
+    const MAX_AIR_DX = 180;  // BASE_SPEED * (2*JUMP_VELOCITY/GRAVITY) ≈ 182
+
+    // Decide how many platforms: 7-10
+    const count = 7 + Math.floor(rng() * 4);
+
+    // Divide vertical space into bands so platforms are spread out
+    const bandH = (MAX_Y - MIN_Y) / count;
+    const result = [];
+
+    for (let i = 0; i < count; i++) {
+      // Band from bottom to top (i=0 is lowest)
+      const bandTop = MAX_Y - (i + 1) * bandH;
+      const bandBot = MAX_Y - i * bandH;
+      // Target Y within band
+      const y = Math.round(bandTop + rng() * (bandBot - bandTop - 10));
+
+      // Width: wider at bottom, narrower at top
+      const fraction = i / (count - 1); // 0=bottom, 1=top
+      const minW = 100 + (1 - fraction) * 40;  // 100-140
+      const maxW = 140 + (1 - fraction) * 80;  // 140-220
+      const w = Math.round(minW + rng() * (maxW - minW));
+
+      // Horizontal position: spread across canvas
+      const x = Math.round(MIN_X + rng() * (MAX_X - w - MIN_X));
+
+      result.push({ x, y: clamp(y, MIN_Y, MAX_Y), w, h: PLAT_H });
+    }
+
+    // --- Reachability pass: ensure every platform can be reached from below ---
+    // Sort by Y descending (lowest platforms first = largest Y values first)
+    result.sort((a, b) => b.y - a.y);
+
+    for (let i = 0; i < result.length; i++) {
+      const plat = result[i];
+      // Find the best "parent" — the highest-Y (lowest) platform below this one
+      // that could serve as a jump source, or the floor.
+      let reachable = false;
+
+      // Check reachability from each lower platform (larger Y = below on screen) or floor
+      const sources = result.filter((p, j) => j !== i && p.y > plat.y);
+      // Also consider the floor as a source
+      const allSources = [...sources, { x: 0, y: FLOOR_Y, w: W }];
+
+      for (const src of allSources) {
+        const vGap = src.y - plat.y; // positive = plat is above src
+        if (vGap <= 0 || vGap > MAX_JUMP_H) continue;
+        // Horizontal overlap or gap
+        const srcMid = src.x + src.w / 2;
+        const platMid = plat.x + plat.w / 2;
+        // Can reach if horizontal gap between edges is within air distance
+        const hGap = Math.max(0, Math.max(plat.x - (src.x + src.w), src.x - (plat.x + plat.w)));
+        if (hGap <= MAX_AIR_DX) {
+          reachable = true;
+          break;
+        }
+      }
+
+      if (!reachable) {
+        // Nudge this platform to be reachable from the nearest lower source
+        // Pick the closest source by Y that is below us
+        let bestSrc = { x: 0, y: FLOOR_Y, w: W }; // floor fallback
+        for (const src of allSources) {
+          const vGap = src.y - plat.y;
+          if (vGap > 0 && vGap <= MAX_JUMP_H) {
+            bestSrc = src;
+            break;
+          }
+        }
+        // If vertical gap is too large, bring the platform down
+        const vGap = bestSrc.y - plat.y;
+        if (vGap > MAX_JUMP_H) {
+          plat.y = bestSrc.y - Math.round(60 + rng() * (MAX_JUMP_H - 70));
+          plat.y = clamp(plat.y, MIN_Y, MAX_Y);
+        }
+        // Nudge horizontally to be within air reach of bestSrc
+        const srcCenter = bestSrc.x + bestSrc.w / 2;
+        const platCenter = plat.x + plat.w / 2;
+        const hGap = Math.max(0, Math.max(plat.x - (bestSrc.x + bestSrc.w), bestSrc.x - (plat.x + plat.w)));
+        if (hGap > MAX_AIR_DX) {
+          // Move platform horizontally toward source
+          if (platCenter > srcCenter) {
+            plat.x = Math.max(MIN_X, bestSrc.x + bestSrc.w - plat.w / 2 + Math.round(rng() * 60));
+          } else {
+            plat.x = Math.min(MAX_X - plat.w, bestSrc.x - plat.w / 2 - Math.round(rng() * 60));
+          }
+          plat.x = clamp(plat.x, MIN_X, MAX_X - plat.w);
+        }
+      }
+    }
+
+    // --- Overlap removal: nudge overlapping platforms apart ---
+    for (let i = 0; i < result.length; i++) {
+      for (let j = i + 1; j < result.length; j++) {
+        const a = result[i], b = result[j];
+        if (a.x < b.x + b.w + 10 && a.x + a.w + 10 > b.x &&
+            a.y < b.y + b.h + 30 && a.y + a.h + 30 > b.y) {
+          // Nudge b horizontally
+          b.x = clamp(a.x + a.w + 20, MIN_X, MAX_X - b.w);
+          if (b.x + b.w > MAX_X - MIN_X) {
+            b.x = clamp(a.x - b.w - 20, MIN_X, MAX_X - b.w);
+          }
+        }
+      }
+    }
+
+    // Ensure at least 2 platforms in lower half and 2 in upper half
+    const midY = (MIN_Y + MAX_Y) / 2;
+    const lowerCount = result.filter(p => p.y > midY).length;
+    const upperCount = result.filter(p => p.y <= midY).length;
+    if (lowerCount < 2) {
+      // Move some upper platforms down
+      const upper = result.filter(p => p.y <= midY);
+      for (let k = 0; k < 2 - lowerCount && k < upper.length; k++) {
+        upper[k].y = Math.round(midY + 20 + rng() * (MAX_Y - midY - 40));
+      }
+    }
+    if (upperCount < 2) {
+      // Move some lower platforms up
+      const lower = result.filter(p => p.y > midY);
+      for (let k = 0; k < 2 - upperCount && k < lower.length; k++) {
+        lower[k].y = Math.round(MIN_Y + rng() * (midY - MIN_Y - 20));
+      }
+    }
+
+    return result;
+  }
+
+  // Start with a default layout; will be regenerated when room seed is known
+  let platforms = generatePlatforms(42);
+  let _lastPlatformSeed = 42;
+
+  /** Regenerate platforms if state.seed changed (keeps multiplayer in sync). */
+  function syncPlatformsFromSeed() {
+    if (!state || state.seed === _lastPlatformSeed) return;
+    _lastPlatformSeed = state.seed;
+    platforms = generatePlatforms(state.seed);
+  }
 
   // Game parameters
   const GRAVITY = 2000; // px/s^2
@@ -137,7 +291,7 @@
       powerups: [], // {id, kind:'magnet'|'doublejump', x, y}
       lastPowerSpawnAt: 0,
       lastDoubleSpawnAt: 0,
-      seed: (Math.random() * 1e9) | 0,
+      seed: hashString(room || String(Date.now())) + ((Math.random() * 1e6) | 0),
       // TERMINATOR bot support
       terminatorMode: false,
       botId: null,
@@ -280,7 +434,7 @@
     if (!terminatorToggle) return;
     terminatorToggle.addEventListener('change', () => {
       const want = !!terminatorToggle.checked;
-      if (!state) { if (want) { state = defaultState(); addMeIfMissing(); } }
+      if (!state) { if (want) { state = defaultState(); addMeIfMissing(); syncPlatformsFromSeed(); } }
       const amOwner = state && state.ownerId === clientId;
       if (!amOwner) {
         // attempt to take ownership if stale
@@ -314,7 +468,7 @@
       setPresence(1, true);
       socket.emit('join', { room, mode });
       socket.emit('request_state', { room, mode });
-      setTimeout(() => { if (!state) { state = defaultState(); addMeIfMissing(); broadcast(); } }, 250);
+      setTimeout(() => { if (!state) { state = defaultState(); addMeIfMissing(); syncPlatformsFromSeed(); broadcast(); } }, 250);
     });
     socket.on('disconnect', () => setPresence(0, false));
     socket.on('presence', (p) => { if (p && p.room === room) { presentCount = Number(p.count) || 1; setPresence(p.count, true); updateTerminatorUi(); } });
@@ -370,6 +524,9 @@
 
     // Base apply
     state = remote;
+
+    // Sync procedural platforms from the shared seed
+    syncPlatformsFromSeed();
 
     // Ensure our player exists (in case owner created state without us yet)
     addMeIfMissing();
@@ -1458,6 +1615,9 @@
   function resetForNextRound(){
     if (!state || !state.players) return;
     state.memes = [];
+    // New seed = new platform layout for the next round
+    state.seed = (state.seed * 1664525 + 1013904223) & 0xFFFFFFFF;
+    syncPlatformsFromSeed();
     for (const id of Object.keys(state.players)) {
       const pl = state.players[id];
       pl.total = 0;
