@@ -13,6 +13,12 @@
   let currentProblem = null;
   let streak = 0;
 
+  // Response time tracking
+  let problemStartMs = 0;
+  let responseTimes = [];
+  const speedBadgeEl = document.getElementById('speedBadge');
+  const victoryStatsEl = document.getElementById('victoryStats');
+
   // Flash mode state
   let flashMode = localStorage.getItem('subitize_flash') === 'true';
   let flashTimer = null;
@@ -393,11 +399,25 @@
     }
   }
 
+  function updateSpeedBadge() {
+    if (!speedBadgeEl || responseTimes.length === 0) return;
+    const avg = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+    const avgSec = (avg / 1000).toFixed(1);
+    let tier, label;
+    if (avg < 2000) { tier = 'lightning'; label = '⚡ ' + avgSec + 's'; }
+    else if (avg < 3000) { tier = 'quick'; label = '\u{1F3C3} ' + avgSec + 's'; }
+    else { tier = 'steady'; label = '⏱ ' + avgSec + 's'; }
+    speedBadgeEl.textContent = label;
+    speedBadgeEl.dataset.tier = tier;
+    speedBadgeEl.hidden = false;
+  }
+
   function nextProblem() {
     hintArea.hidden = true;
     answerInput.value = '';
     cancelFlash();
     currentProblem = generateProblem();
+    problemStartMs = Date.now();
     questionText.textContent = buildQuestion(currentProblem);
     renderProblem(currentProblem);
     if (flashMode) {
@@ -424,7 +444,7 @@
     window.AdaptiveDifficulty.updateBadges(r.level);
   }
 
-  function recordToServer(correct) {
+  function recordToServer(correct, responseMs) {
     if (!window.recordResult) return;
     const p = currentProblem;
     window.recordResult({
@@ -439,6 +459,7 @@
         b: p.b,
         answer: p.answer,
         correct: correct,
+        responseMs: responseMs,
       }
     }).catch(() => {});
   }

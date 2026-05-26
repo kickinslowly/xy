@@ -473,6 +473,42 @@
 
   function cancelBotTimer(){ try { clearTimeout(botMoveTimer); } catch(_){} botMoveTimer = null; }
 
+  // Turn timer (45s, auto-fires random cell)
+  const MW_TURN_SEC = 45;
+  let _mwTurnIv = null, _mwTurnEnd = 0, _mwLastTurnWasMine = false;
+
+  function startMWTurnTimer() {
+    clearMWTurnTimer();
+    _mwTurnEnd = Date.now() + MW_TURN_SEC * 1000;
+    _mwTurnIv = setInterval(() => {
+      const rem = Math.max(0, Math.ceil((_mwTurnEnd - Date.now()) / 1000));
+      if (turnPill && state && state.turn === myTeam) turnPill.textContent = `Your Turn (${rem}s)`;
+      if (rem <= 5 && rem > 0) { try { if (window.SoundFX) window.SoundFX.play('tick'); } catch(_){} }
+      if (rem <= 0) { clearMWTurnTimer(); mwAutoFire(); }
+    }, 1000);
+  }
+  function clearMWTurnTimer() { if (_mwTurnIv) { clearInterval(_mwTurnIv); _mwTurnIv = null; } }
+  function mwAutoFire() {
+    if (!state || state.phase !== 'playing' || !myTeam || state.turn !== myTeam) return;
+    const enemy = myTeam === 'A' ? 'B' : 'A';
+    const eb = state.boards[enemy];
+    if (!eb) return;
+    const pool = [];
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
+      const k = `${r},${c}`;
+      if (!eb.hits?.[k] && !eb.misses?.[k]) pool.push({ r, c });
+    }
+    if (!pool.length) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const hitObj = memeAt(eb.memes, pick.r, pick.c);
+    markShot(myTeam, enemy, pick.r, pick.c, !!hitObj);
+    state.shotSeq = (state.shotSeq || 0) + 1;
+    state.turn = enemy;
+    if (allMemesSunk(eb.memes, eb.hits)) { state.phase = 'gameover'; state.winner = myTeam; }
+    updateUiFromState();
+    broadcast();
+  }
+
   function performBotMove() {
     if (!state?.bot?.enabled) return;
     if (state.bot.controllerId && state.bot.controllerId !== clientId) return;
@@ -695,9 +731,16 @@
     }
 
     turnPill.classList.remove('your-turn','waiting');
-    if (myTeam && state.turn === myTeam) { turnPill.textContent = `Your Turn (Team ${state.turn})`; turnPill.classList.add('your-turn'); }
-    else if (state.turn) { turnPill.textContent = `Waiting for Team ${state.turn}`; turnPill.classList.add('waiting'); }
-    else { turnPill.textContent = 'Turn: —'; }
+    const _isMyTurn = myTeam && state.turn === myTeam && state.phase === 'playing';
+    if (_isMyTurn) {
+      turnPill.classList.add('your-turn');
+      if (!_mwLastTurnWasMine) startMWTurnTimer();
+    } else {
+      if (_mwLastTurnWasMine) clearMWTurnTimer();
+      if (state.turn) { turnPill.textContent = `Waiting for Team ${state.turn}`; turnPill.classList.add('waiting'); }
+      else { turnPill.textContent = 'Turn: —'; }
+    }
+    _mwLastTurnWasMine = !!_isMyTurn;
 
     // Turn banner
     if (turnBannerEl) {
