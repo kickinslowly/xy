@@ -1204,6 +1204,23 @@ def ensure_achievements_seed():
                 next_id += 1
                 to_create.append(ach)
 
+    # Cross-mode achievements (exploration, streak, mastery)
+    cross_mode_achievements = [
+        ('explore_3', 'Renaissance Explorer', 'Play at least 3 different game modes', None, 3),
+        ('explore_all', 'Renaissance Master', 'Play all 7 game modes', None, 7),
+        ('streak_5', 'On Fire', 'Get 5 correct answers in a row (any mode)', None, 5),
+        ('streak_10', 'Blazing', 'Get 10 correct answers in a row (any mode)', None, 10),
+        ('total_100', 'Century', 'Complete 100 challenges across all modes', None, 100),
+        ('total_500', 'Half Thousand', 'Complete 500 challenges across all modes', None, 500),
+        ('subitize_t10', 'Subitize 10', 'Complete 10 Subitize challenges', 'subitize', 10),
+        ('subitize_t50', 'Subitize 50', 'Complete 50 Subitize challenges', 'subitize', 50),
+    ]
+    for code, title, desc, m, t in cross_mode_achievements:
+        if code not in existing_codes:
+            ach = Achievement(id=next_id, code=code, title=title, description=desc, mode=m, threshold=t)
+            next_id += 1
+            to_create.append(ach)
+
     if to_create:
         db.session.add_all(to_create)
         db.session.commit()
@@ -1345,6 +1362,26 @@ def record_result():
                 ua = UserAchievement(user_id=g.user_id, achievement_id=a.id)
                 db.session.add(ua)
                 newly_unlocked.append({'code': a.code, 'title': a.title, 'threshold': a.threshold})
+        # Cross-mode achievements
+        unlocked_ids = {ua.achievement_id for ua in UserAchievement.query.filter_by(user_id=g.user_id).all()}
+        cross_achs = Achievement.query.filter_by(mode=None).all()
+        for a in cross_achs:
+            if a.id in unlocked_ids:
+                continue
+            met = False
+            if a.code.startswith('explore_'):
+                modes_played = db.session.query(GameResult.mode).filter_by(user_id=g.user_id).distinct().count()
+                met = modes_played >= a.threshold
+            elif a.code.startswith('total_'):
+                total_all = db.session.query(func.count(GameResult.id)).filter(
+                    GameResult.user_id == g.user_id,
+                    (GameResult.outcome == None) | (GameResult.outcome.in_(list(SUCCESS_OUTCOMES)))
+                ).scalar() or 0
+                met = int(total_all) >= a.threshold
+            if met:
+                db.session.add(UserAchievement(user_id=g.user_id, achievement_id=a.id))
+                newly_unlocked.append({'code': a.code, 'title': a.title, 'threshold': a.threshold, 'name': a.title})
+
         if newly_unlocked:
             db.session.commit()
 
