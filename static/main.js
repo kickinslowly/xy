@@ -734,16 +734,77 @@
       label: `(${formatNumber(x1)}, ${formatNumber(y1)}) and (${formatNumber(x2)}, ${formatNumber(y2)})`
     };
   }
+  // --- Typed-answer challenges (distance, slope-from-graph) ---
+  function pickDistanceChallenge() {
+    let x1, y1, x2, y2;
+    switch (challengeDifficulty) {
+      case 0:
+        x1 = randomInt(0, 5); y1 = randomInt(0, 5);
+        x2 = x1 + randomInt(1, 4); y2 = y1; // horizontal only at beginner
+        break;
+      case 1:
+        x1 = randomInt(-4, 4); y1 = randomInt(-4, 4);
+        x2 = randomInt(-4, 4); y2 = randomInt(-4, 4);
+        break;
+      default:
+        x1 = randomInt(-7, 7); y1 = randomInt(-7, 7);
+        x2 = randomInt(-7, 7); y2 = randomInt(-7, 7);
+    }
+    if (x1 === x2 && y1 === y2) x2 += 1;
+    const dx = x2 - x1, dy = y2 - y1;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    return {
+      type: 'typed', subtype: 'distance',
+      answer: Math.round(dist * 100) / 100,
+      tolerance: 0.05,
+      p1: { x: x1, y: y1 }, p2: { x: x2, y: y2 },
+      label: `(${formatNumber(x1)}, ${formatNumber(y1)}) and (${formatNumber(x2)}, ${formatNumber(y2)})`
+    };
+  }
+
+  function pickSlopeFromGraphChallenge() {
+    let m, b, x1, y1, x2, y2;
+    switch (challengeDifficulty) {
+      case 0:
+        m = randomInt(1, 3); b = randomInt(0, 3);
+        break;
+      case 1:
+        m = randomInt(-3, 3); if (m === 0) m = 1;
+        b = randomInt(-5, 5);
+        break;
+      default:
+        const fracs = [1/2, 1/3, 2/3, 3/4, 3/2];
+        m = Math.random() < 0.4 ? fracs[Math.floor(Math.random() * fracs.length)] : randomInt(-4, 4);
+        if (m === 0) m = 1;
+        if (Math.random() < 0.5) m = -m;
+        b = randomInt(-6, 6);
+    }
+    x1 = 0; y1 = b;
+    x2 = 3; y2 = m * 3 + b;
+    return {
+      type: 'typed', subtype: 'slopegraph',
+      answer: m,
+      tolerance: 0.02,
+      m, b,
+      p1: { x: x1, y: y1 }, p2: { x: x2, y: y2 },
+      label: 'What is the slope of this line?'
+    };
+  }
+
   // Pooled challenge selectors — pick random subtype within category
   function pickVertexChallenge() {
     const roll = Math.random();
-    if (roll < 0.30) return pickRandomVertex();
-    if (roll < 0.50) return pickQuadrantChallenge();
-    if (roll < 0.75) return pickReflectChallenge();
-    return pickMidpointChallenge();
+    if (roll < 0.25) return pickRandomVertex();
+    if (roll < 0.40) return pickQuadrantChallenge();
+    if (roll < 0.60) return pickReflectChallenge();
+    if (roll < 0.80) return pickMidpointChallenge();
+    return pickDistanceChallenge();
   }
   function pickLineChallenge() {
-    return Math.random() < 0.4 ? pickTwoPointLineChallenge() : pickRandomLine();
+    const roll = Math.random();
+    if (roll < 0.30) return pickTwoPointLineChallenge();
+    if (roll < 0.55) return pickRandomLine();
+    return pickSlopeFromGraphChallenge();
   }
   // Per-subtype UI helpers
   function challengePromptFor(ch) {
@@ -753,6 +814,8 @@
       case 'reflect': return `Reflect ${ch.label}`;
       case 'midpoint': return `Plot the midpoint of ${ch.label}`;
       case 'twopoints': return `Graph the line through ${ch.label}`;
+      case 'distance': return `Find the distance between ${ch.label}`;
+      case 'slopegraph': return ch.label;
       default: return ch.type === 'vertex' ? `Plot this point: ${ch.label}` : `Graph this: ${ch.label}`;
     }
   }
@@ -763,6 +826,8 @@
       case 'reflect': return 'REFLECT';
       case 'midpoint': return 'MIDPOINT';
       case 'twopoints': return 'TWO POINTS';
+      case 'distance': return 'DISTANCE';
+      case 'slopegraph': return 'SLOPE';
       default: return ch.type === 'vertex' ? 'VERTEX' : 'LINE';
     }
   }
@@ -773,6 +838,8 @@
       case 'reflect': return 'Reflection Challenge';
       case 'midpoint': return 'Midpoint Challenge';
       case 'twopoints': return 'Two-Point Line';
+      case 'distance': return 'Distance Challenge';
+      case 'slopegraph': return 'Slope from Graph';
       default: return ch.type === 'vertex' ? 'Vertex Challenge' : 'Line Challenge';
     }
   }
@@ -802,6 +869,18 @@
     if (badgeEl && currentChallenge) {
       badgeEl.textContent = challengeBadgeLabel(currentChallenge);
       badgeEl.className = 'challenge-type-badge' + (currentChallenge.type === 'vertex' ? ' badge-vertex' : '');
+    }
+    // Show/hide typed-answer input for distance + slope-from-graph challenges
+    const answerWrap = document.getElementById('challengeAnswerWrap');
+    const answerInput = document.getElementById('challengeAnswerInput');
+    if (answerWrap) {
+      const isTyped = challengeActive && currentChallenge && currentChallenge.type === 'typed';
+      answerWrap.hidden = !isTyped;
+      if (isTyped && answerInput) { answerInput.value = ''; answerInput.focus(); }
+    }
+    // For typed challenges, draw reference points/lines on canvas
+    if (challengeActive && currentChallenge && currentChallenge.type === 'typed') {
+      drawTypedChallengeOverlay();
     }
   }
   function setChallengeActive(on) {
@@ -1017,11 +1096,116 @@
     if (!challengeActive) return;
     if (currentChallenge && currentChallenge.type === 'vertex') {
       currentChallenge = pickVertexChallenge();
+    } else if (currentChallenge && currentChallenge.type === 'typed') {
+      // Typed challenges can appear in both vertex and line pools
+      currentChallenge = Math.random() < 0.5 ? pickDistanceChallenge() : pickSlopeFromGraphChallenge();
     } else {
       currentChallenge = pickLineChallenge();
     }
     updateChallengeUi();
+    draw();
   }
+
+  function drawTypedChallengeOverlay() {
+    if (!currentChallenge || currentChallenge.type !== 'typed') return;
+    const ch = currentChallenge;
+    if (ch.p1 && ch.p2) {
+      // Draw the two reference points
+      [ch.p1, ch.p2].forEach(pt => {
+        const sp = worldToScreen(pt);
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(`(${formatNumber(pt.x)}, ${formatNumber(pt.y)})`, sp.x, sp.y - 14);
+      });
+      // For slope-from-graph, also draw the line
+      if (ch.subtype === 'slopegraph' && ch.m !== undefined) {
+        const w = canvas.width, h = canvas.height;
+        const leftX = screenToWorld({ x: 0, y: 0 }).x;
+        const rightX = screenToWorld({ x: w, y: 0 }).x;
+        const lp = worldToScreen({ x: leftX, y: ch.m * leftX + ch.b });
+        const rp = worldToScreen({ x: rightX, y: ch.m * rightX + ch.b });
+        ctx.beginPath();
+        ctx.moveTo(lp.x, lp.y);
+        ctx.lineTo(rp.x, rp.y);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // For distance, draw a dashed line between points
+      if (ch.subtype === 'distance') {
+        const sp1 = worldToScreen(ch.p1), sp2 = worldToScreen(ch.p2);
+        ctx.beginPath();
+        ctx.moveTo(sp1.x, sp1.y);
+        ctx.lineTo(sp2.x, sp2.y);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Typed-answer check handler
+  const challengeCheckBtn = document.getElementById('challengeCheckBtn');
+  const challengeAnswerInput = document.getElementById('challengeAnswerInput');
+  function checkTypedAnswer() {
+    if (!challengeActive || !currentChallenge || currentChallenge.type !== 'typed') return;
+    if (!challengeAnswerInput) return;
+    const raw = challengeAnswerInput.value.trim();
+    if (!raw) return;
+    // Parse as fraction or decimal
+    let val;
+    if (raw.includes('/')) {
+      const parts = raw.split('/');
+      val = parseFloat(parts[0]) / parseFloat(parts[1]);
+    } else {
+      val = parseFloat(raw);
+    }
+    if (!Number.isFinite(val)) return;
+    const tol = currentChallenge.tolerance || 0.05;
+    const correct = Math.abs(val - currentChallenge.answer) <= tol;
+    if (correct) {
+      hideFailToast();
+      showRewardToast();
+      adjustDifficulty(true);
+      try {
+        if (window.recordResult) {
+          window.recordResult({
+            mode: 'plane', game_name: challengeGameName(currentChallenge),
+            outcome: 'success',
+            details_json: { challenge_type: challengeRecordType(currentChallenge), correct: true, difficulty: DIFF_LABELS[challengeDifficulty] }
+          }).catch(() => {});
+        }
+      } catch (_) {}
+      setTimeout(() => { hideRewardToast(); clearAllSilently(); nextChallenge(); }, 1300);
+    } else {
+      showFailToast(`Answer: ${formatNumber(currentChallenge.answer)}`);
+      adjustDifficulty(false);
+      try {
+        if (window.recordResult) {
+          window.recordResult({
+            mode: 'plane', game_name: challengeGameName(currentChallenge),
+            outcome: 'incorrect',
+            details_json: { challenge_type: challengeRecordType(currentChallenge), correct: false, difficulty: DIFF_LABELS[challengeDifficulty] }
+          }).catch(() => {});
+        }
+      } catch (_) {}
+      setTimeout(() => { hideFailToast(); nextChallenge(); }, 2500);
+    }
+  }
+  if (challengeCheckBtn) challengeCheckBtn.addEventListener('click', checkTypedAnswer);
+  if (challengeAnswerInput) challengeAnswerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkTypedAnswer(); });
   function afterAddInfiniteLine(newLine) {
     try {
       if (!challengeActive || !currentChallenge || currentChallenge.type !== 'line' || !newLine) return;
@@ -2198,6 +2382,7 @@
     drawScaleOverlay();
     drawTranslationOverlay();
     drawSelectionRectOverlay();
+    drawTypedChallengeOverlay();
     updateSidebar();
   }
 

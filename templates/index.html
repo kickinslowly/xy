@@ -138,6 +138,10 @@
         <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
         <span id="challengeText" class="challenge-prompt-text" aria-live="polite"></span>
         <span class="challenge-score-pill" id="challengeScore" title="Correct answers"><span id="challengeCorrect">0</span> correct</span>
+        <div class="challenge-answer-wrap" id="challengeAnswerWrap" hidden>
+          <input type="text" id="challengeAnswerInput" class="challenge-answer-input" placeholder="?" autocomplete="off" aria-label="Your answer" />
+          <button id="challengeCheckBtn" type="button" class="btn-3d btn-sm success">Check</button>
+        </div>
         <div class="challenge-controls">
           <button id="nextChallengeBtn" type="button" class="btn-3d btn-sm challenge-skip-btn">Skip</button>
           <button id="stopChallengeBtn" type="button" class="btn-light btn-sm challenge-stop-btn">End</button>

@@ -780,6 +780,8 @@ CHALLENGE_STANDARD_MAP = {
     ('plane', 'reflect'):      ['8.G.A.1', '8.G.A.3'],
     ('plane', 'midpoint'):     ['5.G.A.1', '6.NS.C.8'],
     ('plane', 'twopoints'):    ['8.EE.B.5', '8.EE.B.6', '8.F.A.3'],
+    ('plane', 'distance'):     ['8.G.B.8', '6.NS.C.8'],
+    ('plane', 'slopegraph'):   ['8.EE.B.5', '8.EE.B.6'],
     ('plane', 'transform'):    ['8.G.A.1', '8.G.A.2', '8.G.A.3'],
     ('plane', 'polygon'):      ['6.G.A.3', '5.G.A.1'],
     # Line Graphing

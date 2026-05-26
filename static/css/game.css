@@ -2302,6 +2302,28 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
 }
 .challenge-stop-btn:hover { opacity: 1; }
 
+.challenge-answer-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.challenge-answer-input {
+  width: 80px;
+  padding: 6px 10px;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  outline: none;
+}
+.challenge-answer-input:focus {
+  border-color: var(--mode, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mode, var(--accent)) 25%, transparent);
+}
+
 .challenge-score-pill {
   display: inline-flex;
   align-items: center;
