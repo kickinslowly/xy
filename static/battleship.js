@@ -36,6 +36,17 @@
   const noobModeEl = qs('#noobMode');
   const fireSectionEl = qs('.fire-section');
 
+  // Placement phase elements
+  const placementPanel = qs('#placementPanel');
+  const placementShipName = qs('#placementShipName');
+  const placementProgress = qs('#placementProgress');
+  const rotateBtn = qs('#rotateBtn');
+  const randomizeBtn = qs('#randomizeBtn');
+  const undoShipBtn = qs('#undoShipBtn');
+  const readyBtn = qs('#readyBtn');
+  const placementHint = qs('#placementHint');
+  const placementToast = qs('#placementToast');
+
   const statsYouEl = qs('#statsYou');
   const yourTeamBadge = qs('#yourTeamBadge');
   const statsEnemyEl = qs('#statsEnemy');
@@ -80,7 +91,8 @@
 
   function defaultState() {
     return {
-      phase: 'lobby', // 'lobby' | 'countdown' | 'playing' | 'gameover'
+      phase: 'lobby', // 'lobby' | 'countdown' | 'placement' | 'playing' | 'gameover'
+      ready: { A: false, B: false }, // placement readiness per team
       countdownEndsAt: null, // ms since epoch
       startedBy: null,
       winner: null,
@@ -107,6 +119,269 @@
   let _pendingFireUntil = 0;
   function _isFirePending() { return Date.now() < _pendingFireUntil; }
   function _markFirePending() { _pendingFireUntil = Date.now() + 800; }
+
+  // ---- Ship Placement Phase ----
+  const SHIP_DEFS = [
+    { name: 'Carrier',    size: 5 },
+    { name: 'Battleship', size: 4 },
+    { name: 'Cruiser',    size: 3 },
+    { name: 'Submarine',  size: 3 },
+    { name: 'Destroyer',  size: 2 },
+  ];
+  const SHIP_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#fb7185'];
+  let placementOrientation = 'H'; // 'H' or 'V'
+  let placementShips = [];        // ships placed so far: [{name, size, coords, colorIdx}]
+  let placementCurrentIdx = 0;    // index into SHIP_DEFS being placed
+  let placementReady = false;     // local "ready" flag
+  let _hoverPreviewCells = [];    // cells currently showing ghost preview
+
+  function resetPlacement() {
+    placementShips = [];
+    placementCurrentIdx = 0;
+    placementReady = false;
+    placementOrientation = 'H';
+    _hoverPreviewCells = [];
+    if (rotateBtn) rotateBtn.textContent = 'Horizontal';
+  }
+
+  function placementGrid() {
+    // Build a 10x10 occupancy grid from placementShips
+    const g = Array.from({ length: 10 }, () => Array(10).fill(-1));
+    placementShips.forEach((sh, idx) => {
+      for (const p of sh.coords) g[p.r][p.c] = idx;
+    });
+    return g;
+  }
+
+  function canPlaceShipAt(r, c, size, horiz, grid) {
+    if (horiz) {
+      if (c + size > 10) return false;
+      for (let i = 0; i < size; i++) { if (grid[r][c + i] !== -1) return false; }
+    } else {
+      if (r + size > 10) return false;
+      for (let i = 0; i < size; i++) { if (grid[r + i][c] !== -1) return false; }
+    }
+    return true;
+  }
+
+  function shipCoordsAt(r, c, size, horiz) {
+    const coords = [];
+    for (let i = 0; i < size; i++) {
+      coords.push({ r: r + (horiz ? 0 : i), c: c + (horiz ? i : 0) });
+    }
+    return coords;
+  }
+
+  function coordLabel(r, c) {
+    // Display as (X, Y) where X = c+1, Y = 10-r (matching the axis labels)
+    return `(${c + 1}, ${10 - r})`;
+  }
+
+  function showPlacementToast(msg) {
+    if (!placementToast) return;
+    placementToast.textContent = msg;
+    placementToast.hidden = false;
+    clearTimeout(showPlacementToast._t);
+    showPlacementToast._t = setTimeout(() => { placementToast.hidden = true; }, 3000);
+  }
+
+  function updatePlacementUi() {
+    if (!placementPanel) return;
+    const total = SHIP_DEFS.length;
+    const placed = placementShips.length;
+    if (placementProgress) placementProgress.textContent = `${placed} / ${total} ships placed`;
+    if (placed < total) {
+      const def = SHIP_DEFS[placed];
+      if (placementShipName) {
+        placementShipName.textContent = `Place your ${def.name} (${def.size} cells)`;
+        placementShipName.style.color = SHIP_COLORS[placed];
+      }
+    } else {
+      if (placementShipName) {
+        placementShipName.textContent = 'All ships placed!';
+        placementShipName.style.color = '#34d399';
+      }
+    }
+    if (readyBtn) readyBtn.disabled = placed < total;
+    if (undoShipBtn) undoShipBtn.disabled = placed === 0;
+    renderPlacementBoard();
+  }
+
+  function renderPlacementBoard() {
+    // Re-render your board during placement to show placed ships with colors
+    const cells = qsa('.cell', yourBoardEl);
+    cells.forEach(c => { c.className = 'cell'; c.innerHTML = ''; c.style.backgroundColor = ''; });
+    const grid = placementGrid();
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (grid[r][c] !== -1) {
+          const cell = yourBoardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+          if (cell) {
+            cell.classList.add('ship', 'placement-placed');
+            cell.style.backgroundColor = SHIP_COLORS[grid[r][c]] + '33'; // semi-transparent
+          }
+        }
+      }
+    }
+  }
+
+  function onYourBoardPlacementClick(e) {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    if (!state || state.phase !== 'placement' || !myTeam) return;
+    if (placementReady) return;
+    const r = Number(cell.dataset.r);
+    const c = Number(cell.dataset.c);
+
+    // Check if clicking on an already-placed ship to remove it
+    const grid = placementGrid();
+    if (grid[r][c] !== -1) {
+      const removedIdx = grid[r][c];
+      const removed = placementShips[removedIdx];
+      placementShips.splice(removedIdx, 1);
+      placementCurrentIdx = placementShips.length;
+      try { if (window.SoundFX) window.SoundFX.play('click'); } catch(_){}
+      showPlacementToast(`${removed.name} removed. Click to re-place.`);
+      clearHoverPreview();
+      updatePlacementUi();
+      return;
+    }
+
+    // Placing the next ship
+    if (placementShips.length >= SHIP_DEFS.length) return;
+    const def = SHIP_DEFS[placementShips.length];
+    const horiz = placementOrientation === 'H';
+    if (!canPlaceShipAt(r, c, def.size, horiz, grid)) {
+      // Invalid — flash red
+      cell.classList.add('placement-invalid');
+      setTimeout(() => { try { cell.classList.remove('placement-invalid'); } catch(_){} }, 400);
+      return;
+    }
+    const coords = shipCoordsAt(r, c, def.size, horiz);
+    placementShips.push({ name: def.name, size: def.size, coords, colorIdx: placementShips.length });
+    placementCurrentIdx = placementShips.length;
+    try { if (window.SoundFX) window.SoundFX.play('click'); } catch(_){}
+
+    // Coordinate practice toast
+    const startCoord = coordLabel(coords[0].r, coords[0].c);
+    const endCoord = coordLabel(coords[coords.length - 1].r, coords[coords.length - 1].c);
+    showPlacementToast(`${def.name} placed at ${startCoord} to ${endCoord}`);
+
+    clearHoverPreview();
+    updatePlacementUi();
+  }
+
+  function onYourBoardPlacementHover(e) {
+    if (!state || state.phase !== 'placement' || !myTeam || placementReady) return;
+    if (placementShips.length >= SHIP_DEFS.length) return;
+    const cell = e.target.closest('.cell');
+    clearHoverPreview();
+    if (!cell) return;
+    const r = Number(cell.dataset.r);
+    const c = Number(cell.dataset.c);
+    const def = SHIP_DEFS[placementShips.length];
+    const horiz = placementOrientation === 'H';
+    const grid = placementGrid();
+    const valid = canPlaceShipAt(r, c, def.size, horiz, grid);
+    const coords = shipCoordsAt(r, c, def.size, horiz);
+    for (const p of coords) {
+      if (p.r >= 10 || p.c >= 10) continue;
+      const el = yourBoardEl.querySelector(`.cell[data-r="${p.r}"][data-c="${p.c}"]`);
+      if (el) {
+        el.classList.add('placement-preview');
+        if (!valid) el.classList.add('placement-preview-invalid');
+        else el.style.backgroundColor = SHIP_COLORS[placementShips.length] + '55';
+        _hoverPreviewCells.push(el);
+      }
+    }
+  }
+
+  function clearHoverPreview() {
+    for (const el of _hoverPreviewCells) {
+      el.classList.remove('placement-preview', 'placement-preview-invalid');
+      // Restore color from placed ships or clear
+      const r = Number(el.dataset.r), c = Number(el.dataset.c);
+      const grid = placementGrid();
+      if (grid[r][c] !== -1) {
+        el.style.backgroundColor = SHIP_COLORS[grid[r][c]] + '33';
+      } else {
+        el.style.backgroundColor = '';
+      }
+    }
+    _hoverPreviewCells = [];
+  }
+
+  function onYourBoardPlacementLeave() {
+    clearHoverPreview();
+  }
+
+  // Wire rotate button + R key
+  rotateBtn?.addEventListener('click', () => {
+    placementOrientation = placementOrientation === 'H' ? 'V' : 'H';
+    rotateBtn.textContent = placementOrientation === 'H' ? 'Horizontal' : 'Vertical';
+    clearHoverPreview();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') {
+      if (state && state.phase === 'placement' && !placementReady) {
+        placementOrientation = placementOrientation === 'H' ? 'V' : 'H';
+        if (rotateBtn) rotateBtn.textContent = placementOrientation === 'H' ? 'Horizontal' : 'Vertical';
+        clearHoverPreview();
+      }
+    }
+  });
+
+  // Wire randomize button
+  randomizeBtn?.addEventListener('click', () => {
+    if (!state || state.phase !== 'placement' || placementReady) return;
+    const ships = placeRandomShips();
+    placementShips = ships.map((sh, i) => ({ name: sh.name, size: sh.size, coords: sh.coords, colorIdx: i }));
+    placementCurrentIdx = SHIP_DEFS.length;
+    try { if (window.SoundFX) window.SoundFX.play('click'); } catch(_){}
+    showPlacementToast('Ships randomized! Click Ready when set.');
+    updatePlacementUi();
+  });
+
+  // Wire undo button
+  undoShipBtn?.addEventListener('click', () => {
+    if (!state || state.phase !== 'placement' || placementReady) return;
+    if (placementShips.length === 0) return;
+    const removed = placementShips.pop();
+    placementCurrentIdx = placementShips.length;
+    try { if (window.SoundFX) window.SoundFX.play('click'); } catch(_){}
+    showPlacementToast(`${removed.name} removed.`);
+    clearHoverPreview();
+    updatePlacementUi();
+  });
+
+  // Wire ready button
+  readyBtn?.addEventListener('click', () => {
+    if (!state || state.phase !== 'placement' || !myTeam) return;
+    if (placementShips.length < SHIP_DEFS.length) return;
+    placementReady = true;
+    // Commit ships to state
+    state.boards[myTeam].ships = placementShips.map(sh => ({
+      name: sh.name, size: sh.size, coords: sh.coords.map(p => ({r: p.r, c: p.c})), hits: []
+    }));
+    if (!state.ready) state.ready = {};
+    state.ready[myTeam] = true;
+    try { if (window.SoundFX) window.SoundFX.play('click'); } catch(_){}
+    readyBtn.textContent = 'Waiting for opponent...';
+    readyBtn.disabled = true;
+    broadcast();
+    checkBothReady();
+    updateUiFromState();
+  });
+
+  function checkBothReady() {
+    if (!state || state.phase !== 'placement') return;
+    if (state.ready && state.ready.A && state.ready.B) {
+      state.phase = 'playing';
+      // Ensure ships exist for both sides
+      broadcast();
+      updateUiFromState();
+    }
+  }
 
   // Initial setup
   (async function init(){
@@ -356,9 +631,29 @@
     const localSeq = (state && typeof state.shotSeq === 'number') ? state.shotSeq : 0;
     const remoteSeq = (typeof remote.shotSeq === 'number') ? remote.shotSeq : 0;
     if (state && remoteSeq < localSeq) return;
+    const prevPhase = state ? state.phase : null;
     state = remote;
     // Our broadcast has been seen (or a higher-seq one has) — release the local fire-pending lock.
     _pendingFireUntil = 0;
+    // If we just entered placement phase from a remote state, reset local placement
+    if (state.phase === 'placement' && prevPhase !== 'placement') {
+      resetPlacement();
+      // Auto-switch to YOUR FLEET tab
+      try {
+        const btnYour = document.getElementById('tabBtnYour');
+        if (btnYour && myTeam) btnYour.click();
+      } catch(_){}
+      // Bot auto-places immediately
+      if (state.bot && state.bot.enabled && state.bot.controllerId === clientId) {
+        const botTeam = state.bot.team;
+        if (botTeam && !state.boards[botTeam].ships) {
+          state.boards[botTeam].ships = placeRandomShips();
+          if (!state.ready) state.ready = {};
+          state.ready[botTeam] = true;
+          broadcast();
+        }
+      }
+    }
     // If we already have a server-assigned team, ensure we are listed in that team
     if (myTeam) {
       try {
@@ -402,8 +697,17 @@
         if (!isOwn) {
           cell.addEventListener('click', onEnemyCellClick);
         }
+        if (isOwn) {
+          cell.addEventListener('click', onYourBoardPlacementClick);
+          cell.addEventListener('mouseenter', onYourBoardPlacementHover);
+          cell.addEventListener('touchstart', onYourBoardPlacementHover, { passive: true });
+        }
         root.appendChild(cell);
       }
+    }
+    // Clear hover preview when leaving the board
+    if (isOwn) {
+      root.addEventListener('mouseleave', onYourBoardPlacementLeave);
     }
     // Bottom X-axis numeric labels (1–10)
     const bl = document.createElement('div');
@@ -603,12 +907,32 @@
     // Phase/turn labels
     if (state.phase === 'lobby') phaseText.textContent = 'Lobby';
     else if (state.phase === 'countdown') phaseText.textContent = 'Countdown';
+    else if (state.phase === 'placement') phaseText.textContent = 'Place Ships';
     else if (state.phase === 'playing') phaseText.textContent = 'Playing';
     else if (state.phase === 'gameover') phaseText.textContent = 'Game over';
 
     // Hide lobby bar once the game is starting/started
     if (lobbyPanel) {
       lobbyPanel.style.display = (state.phase === 'lobby') ? '' : 'none';
+    }
+
+    // Placement panel visibility
+    if (placementPanel) {
+      const inPlacement = state.phase === 'placement' && myTeam && !placementReady;
+      const showReady = state.phase === 'placement' && myTeam && placementReady;
+      placementPanel.hidden = state.phase !== 'placement';
+      if (state.phase === 'placement' && myTeam) {
+        updatePlacementUi();
+        if (placementReady) {
+          if (placementShipName) { placementShipName.textContent = 'Waiting for opponent...'; placementShipName.style.color = '#fbbf24'; }
+          if (readyBtn) { readyBtn.textContent = 'Waiting...'; readyBtn.disabled = true; }
+          if (placementHint) placementHint.textContent = 'Your fleet is locked in. Waiting for the other team.';
+        }
+      }
+      // Check if both teams are ready (may arrive via remote state)
+      if (state.phase === 'placement') {
+        checkBothReady();
+      }
     }
 
     // Track turn changes (for opponent-stale detection). Any seq increment OR
@@ -667,6 +991,17 @@
           bText = `Team ${state.turn}'s Turn`;
           turnBannerEl.classList.add('is-spectator');
         }
+      } else if (state.phase === 'placement') {
+        if (myTeam && placementReady) {
+          bText = 'WAITING FOR OPPONENT';
+          turnBannerEl.classList.add('is-opponent');
+        } else if (myTeam) {
+          bText = 'PLACE YOUR SHIPS!';
+          turnBannerEl.classList.add('is-you');
+        } else {
+          bText = 'Players Placing Ships';
+          turnBannerEl.classList.add('is-spectator');
+        }
       } else if (state.phase === 'countdown') {
         bText = 'Starting…';
       } else if (state.phase === 'lobby') {
@@ -699,10 +1034,11 @@
         countdownNum.textContent = String(s);
         if (left <= 0 && state.phase === 'countdown') {
           clearInterval(countdownTimer);
-          // Switch to playing, then flash "Your Turn"/"Opponent's Turn"
-          state.phase = 'playing';
-          let msg = 'Team ' + (state.turn || '—') + "'s Turn";
-          if (myTeam) msg = (state.turn === myTeam) ? 'YOUR TURN' : "OPPONENT'S TURN";
+          // Switch to placement phase (not directly to playing)
+          state.phase = 'placement';
+          state.ready = { A: false, B: false };
+          resetPlacement();
+          let msg = 'PLACE YOUR SHIPS!';
           try {
             if (countdownOverlay) countdownOverlay.classList.add('show');
             if (countdownBigNumEl) countdownBigNumEl.style.display = 'none';
@@ -716,9 +1052,22 @@
               if (countdownTurnTextEl) countdownTurnTextEl.style.display = 'none';
             } catch(_){}
           }, 1300);
-          // Immediately refresh local UI so turn indicators and bot scheduling update without needing server echo
+          // Bot auto-places ships immediately during placement
+          if (state.bot && state.bot.enabled && state.bot.controllerId === clientId) {
+            const botTeam = state.bot.team;
+            if (botTeam) {
+              state.boards[botTeam].ships = placeRandomShips();
+              if (!state.ready) state.ready = {};
+              state.ready[botTeam] = true;
+            }
+          }
           updateUiFromState();
           broadcast();
+          // Auto-switch to YOUR FLEET tab so student sees their board
+          try {
+            const btnYour = document.getElementById('tabBtnYour');
+            if (btnYour && myTeam) btnYour.click();
+          } catch(_){}
         }
       };
       updateCountdown();
@@ -772,15 +1121,8 @@
       updateUiFromState._postedResult = false;
     }
 
-    // Ensure ships exist when teams join (only a member places their own team's ships)
-    if (myTeam === 'A' && !state.boards.A.ships && listA.length > 0) {
-      state.boards.A.ships = placeRandomShips();
-      broadcast();
-    }
-    if (myTeam === 'B' && !state.boards.B.ships && listB.length > 0) {
-      state.boards.B.ships = placeRandomShips();
-      broadcast();
-    }
+    // Ships are now placed during the placement phase (manual or randomized).
+    // No auto-placement on team join.
 
     // Render boards
     renderBoards();
@@ -795,8 +1137,15 @@
   }
 
   function renderBoards() {
+    // During placement, your board is rendered by renderPlacementBoard()
+    if (state.phase === 'placement') {
+      qsa('.cell', enemyBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; });
+      // Don't clear your board cells — placement renderer handles them
+      return;
+    }
+
     // Clear classes on all cells
-    qsa('.cell', yourBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; });
+    qsa('.cell', yourBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; c.style.backgroundColor = ''; });
     qsa('.cell', enemyBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; });
 
     const letters = 'ABCDEFGHIJ'.split('');
@@ -1000,6 +1349,9 @@
     state.teams.B.members = keepB;
     // Give the losing team the first turn for morale (totally scientific)
     state.turn = (wasWinner === 'A') ? 'B' : 'A';
+    resetPlacement();
+    // Clear any inline background colors on your board cells from placement
+    qsa('.cell', yourBoardEl).forEach(c => { c.style.backgroundColor = ''; });
   }
 
   // Single Player (Bot) helpers
@@ -1034,9 +1386,16 @@
     // Add placeholder bot member
     if (!state.teams[bt].members) state.teams[bt].members = {};
     if (!state.teams[bt].members.BOT) { state.teams[bt].members.BOT = '🤖 Bot'; changed = true; }
-    // Ensure bot's ships placed
-    if (!state.boards[bt].ships) { state.boards[bt].ships = placeRandomShips(); changed = true; }
+    // Ensure bot's ships placed (auto-place during placement or playing phases)
+    if (!state.boards[bt].ships && (state.phase === 'placement' || state.phase === 'playing')) {
+      state.boards[bt].ships = placeRandomShips(); changed = true;
+      if (!state.ready) state.ready = {};
+      state.ready[bt] = true;
+      changed = true;
+    }
     if (changed && broadcastIfChanged) broadcast();
+    // Check if both ready after bot auto-placed
+    if (state.phase === 'placement') checkBothReady();
   }
 
   function maybeTriggerBotMove() {

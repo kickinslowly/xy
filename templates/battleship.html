@@ -70,6 +70,22 @@
   <section class="game-main">
     <div id="turnBanner" class="turn-banner" role="status" aria-live="polite">—</div>
 
+    <!-- Ship Placement Panel (visible only during placement phase) -->
+    <div id="placementPanel" class="placement-panel" hidden>
+      <div class="placement-header">
+        <span id="placementShipName" class="placement-ship-name">Place your Carrier (5 cells)</span>
+        <span id="placementProgress" class="placement-progress">0 / 5 ships placed</span>
+      </div>
+      <div class="placement-controls">
+        <button id="rotateBtn" class="btn-3d placement-btn" type="button" title="Press R to rotate">Horizontal</button>
+        <button id="randomizeBtn" class="btn-3d placement-btn" type="button">Randomize</button>
+        <button id="undoShipBtn" class="btn-light placement-btn" type="button" disabled>Undo Last</button>
+        <button id="readyBtn" class="btn-3d placement-ready-btn" type="button" disabled>Ready!</button>
+      </div>
+      <small id="placementHint" class="placement-hint hint">Click a cell on YOUR FLEET board to place</small>
+      <div id="placementToast" class="placement-toast" role="status" aria-live="polite" hidden></div>
+    </div>
+
     <div class="tabs" role="tablist" aria-label="Battleship board tabs">
       <button id="tabBtnEnemy" class="tab" role="tab" aria-controls="tab-enemy" aria-selected="true">ENEMY WATERS</button>
       <button id="tabBtnYour" class="tab" role="tab" aria-controls="tab-your" aria-selected="false">YOUR FLEET</button>

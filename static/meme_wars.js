@@ -7,6 +7,12 @@
   const joinBtn = qs('#joinSessionBtn');
 
   const btnStart = qs('#startBtn');
+  const btnJoinA = qs('#joinA');
+  const btnJoinB = qs('#joinB');
+  const countAEl = qs('#countA');
+  const countBEl = qs('#countB');
+  const teamAList = qs('#teamAList');
+  const teamBList = qs('#teamBList');
   const phaseText = qs('#phaseText');
   const lobbyPanel = qs('#lobbyPanel');
 
@@ -381,6 +387,17 @@
     if (!state.teams[team].members[id]) state.teams[team].members[id] = name || `Player-${id.slice(0,4)}`;
   }
 
+  function joinTeam(team) {
+    if (!state) return;
+    myTeam = team;
+    ensureMember(team, clientId, myName);
+    broadcast();
+    updateUiFromState();
+  }
+
+  btnJoinA?.addEventListener('click', () => joinTeam('A'));
+  btnJoinB?.addEventListener('click', () => joinTeam('B'));
+
   // Start game
   btnStart?.addEventListener('click', () => {
     if (!state) return;
@@ -568,6 +585,18 @@
 
   function updateUiFromState() {
     if (!state) return;
+
+    // Lobby team rosters
+    const listA = Object.values(state.teams.A.members || {});
+    const listB = Object.values(state.teams.B.members || {});
+    if (countAEl) countAEl.textContent = `${listA.length} player${listA.length === 1 ? '' : 's'}`;
+    if (countBEl) countBEl.textContent = `${listB.length} player${listB.length === 1 ? '' : 's'}`;
+    if (teamAList) teamAList.textContent = listA.length ? listA.join(', ') : 'No one yet.';
+    if (teamBList) teamBList.textContent = listB.length ? listB.join(', ') : 'No one yet.';
+
+    // Enable start when both teams populated
+    const hasA = listA.length > 0, hasB = listB.length > 0;
+    if (btnStart) btnStart.disabled = !(hasA && hasB) || state.phase !== 'lobby';
 
     // Ensure memes exist when a member of a team is present
     if (myTeam === 'A' && !state.boards.A.memes && Object.keys(state.teams.A.members).length > 0) {

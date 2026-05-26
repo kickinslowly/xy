@@ -4,8 +4,8 @@
 
 ### Last Action
 - **Date**: 2026-05-25
-- **Action**: Session 12 — Added Subitize mode (`/subitize`): visual dot-group arithmetic (multiply, add, subtract, divide, mixed). Canvas-rendered subitizable dot patterns, adaptive difficulty, score/victory system, standards-mapped (5.OA.A.1, 5.NBT.B.5, 5.NBT.B.6, 6.NS.B.2). Also ran project onboarding (created DEEP_MEMORY.md, .claude/skills/).
-- **Status**: 7 game modes live. Session 12: Subitize mode built, full 7-agent audit, DEVELOPMENT_PLAN.md + goals.md rewrite. Phase 1 (11 bugs) and Phase 2 partial (sound system + subitize flash mode) completed.
+- **Action**: Session 13 — Added manual ship placement phase to Battleship mode. New `placement` phase between countdown and playing. Students click grid cells to place 5 ships (Carrier/Battleship/Cruiser/Submarine/Destroyer) with hover preview, orientation toggle (R key), undo, randomize fallback. Coordinate practice toast on each placement. Both teams must Ready before battle starts. Bot auto-places instantly. Multiplayer-synced via existing broadcast system.
+- **Status**: 7 game modes live. Battleship now has placement phase. Previous: Session 12 Subitize mode built, full 7-agent audit, DEVELOPMENT_PLAN.md + goals.md rewrite.
 
 ### What Exists
 - Full Flask app with 6 game modes + dashboard + shop + arcade lobby home page

@@ -784,6 +784,9 @@ CHALLENGE_STANDARD_MAP = {
     ('plane', 'polygon'):      ['6.G.A.3', '5.G.A.1'],
     # Line Graphing
     ('line', 'line'):          ['8.EE.B.5', '8.EE.B.6', '8.F.A.3', '8.F.B.4', '8.F.B.5'],
+    ('line', 'slope'):         ['8.EE.B.5', '8.EE.B.6', '8.F.B.4'],
+    ('line', 'equation'):      ['8.EE.B.5', '8.EE.B.6', '8.F.A.3', '8.F.B.4'],
+    ('line', 'predict'):       ['8.F.A.1', '8.F.A.3', '8.F.B.4'],
     # Ratios
     ('ratios', 'create'):      ['6.RP.A.1'],
     ('ratios', 'partpart'):    ['6.RP.A.1'],

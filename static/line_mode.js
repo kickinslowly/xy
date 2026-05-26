@@ -103,6 +103,7 @@
   let chart = null;
 
   // State: list of series, each with DOM refs and id
+  let challengeLock = false; // true while Line Detective controls the chart
   let seriesSeq = 1;
   const allSeries = new Map(); // id -> {id, cardEl, labelEl, colorEl, widthEl, tbodyEl}
   let rowSelectCounter = 1;
@@ -509,6 +510,7 @@
   }
 
   function updateChart() {
+    if (challengeLock) return; // Line Detective owns the chart right now
     updateMathInfoLineMode();
     const sers = gatherSeriesData();
     const c = ensureChart();
@@ -1560,6 +1562,474 @@
     } else {
       setPresence(0, false);
     }
+  })();
+
+  // =====================================================================
+  // LINE DETECTIVE — Challenge system for Line Graph mode
+  // =====================================================================
+  (function lineDetective() {
+    const AD = window.AdaptiveDifficulty;
+    const MODE_KEY = 'line';
+    const GOAL = 10;
+
+    // DOM refs
+    const bar       = qs('#lineDetectiveBar');
+    const idleEl    = qs('#ldIdle');
+    const activeEl  = qs('#ldActive');
+    const startBtn  = qs('#ldStartBtn');
+    const typeBadge = qs('#ldTypeBadge');
+    const scoreEl   = qs('#ldScore');
+    const promptEl  = qs('#ldPrompt');
+    const answerIn  = qs('#ldAnswerInput');
+    const checkBtn  = qs('#ldCheckBtn');
+    const skipBtn   = qs('#ldSkipBtn');
+    const endBtn    = qs('#ldEndBtn');
+
+    if (!bar || !startBtn) return; // bail if template elements missing
+
+    // State
+    let active = false;
+    let score = 0;
+    let questionNum = 0;
+    let current = null;      // { type, m, b, x1, y1, x2, y2, answer, answerStr, prompt }
+    let savedDatasets = null; // user datasets we stash during challenge
+    let feedbackTimer = null;
+
+    // --- Difficulty-aware parameter generation ---
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+    function pickFraction(level) {
+      // Returns a simple fraction as a decimal. Level 2+ only.
+      const fracs = level >= 3
+        ? [1/2, 1/3, 2/3, 1/4, 3/4, 1/5, 2/5, 3/5, 4/5]
+        : [1/2, 2/3, 3/4];
+      return fracs[randInt(0, fracs.length - 1)] * (Math.random() < 0.5 ? -1 : 1);
+    }
+    function genSlope(level) {
+      if (level === 0) return randInt(1, 2);
+      if (level === 1) {
+        let m = randInt(-3, 3);
+        return m === 0 ? 1 : m;
+      }
+      // level 2+: ~40% chance of fraction
+      if (Math.random() < 0.4) return pickFraction(level);
+      let m = randInt(-4, 4);
+      return m === 0 ? 1 : m;
+    }
+    function genIntercept(level) {
+      if (level === 0) return randInt(0, 3);
+      if (level === 1) return randInt(-5, 5);
+      if (level === 2) return randInt(-8, 8);
+      return randInt(-12, 12);
+    }
+
+    // --- Fraction / equation parsing helpers ---
+    function parseFractionOrDecimal(s) {
+      s = s.trim().replace(/\s+/g, '');
+      if (!s) return NaN;
+      // fraction form: "-3/4" or "3/4"
+      const fMatch = s.match(/^(-?\d+)\/(-?\d+)$/);
+      if (fMatch) {
+        const num = parseInt(fMatch[1], 10);
+        const den = parseInt(fMatch[2], 10);
+        if (den === 0) return NaN;
+        return num / den;
+      }
+      return parseFloat(s);
+    }
+
+    function parseEquation(s) {
+      // Accept: y=2x+3, y = -1/2 x - 4, y=3, y=-x, etc.
+      s = s.trim().replace(/\s+/g, '');
+      // Remove leading y=
+      const eqMatch = s.match(/^y=(.*)/i);
+      if (!eqMatch) return null;
+      let rhs = eqMatch[1];
+
+      // Special case: just a number (horizontal line, m=0)
+      if (/^-?\d+(\.\d+)?$/.test(rhs) || /^-?\d+\/-?\d+$/.test(rhs)) {
+        return { m: 0, b: parseFractionOrDecimal(rhs) };
+      }
+
+      // Normalise: insert '+' before a bare '-' that isn't at start
+      // e.g. "2x-3" → "2x+-3"
+      rhs = rhs.replace(/(?<=\d|x)-/g, '+-');
+
+      // Split into terms
+      const terms = rhs.split('+').filter(Boolean);
+      let m = null, b = 0;
+      for (const term of terms) {
+        if (term.includes('x')) {
+          const coeff = term.replace('x', '');
+          if (coeff === '' || coeff === '+') m = 1;
+          else if (coeff === '-') m = -1;
+          else m = parseFractionOrDecimal(coeff);
+        } else {
+          b = parseFractionOrDecimal(term);
+        }
+      }
+      if (m === null) m = 0;
+      if (!Number.isFinite(m) || !Number.isFinite(b)) return null;
+      return { m, b };
+    }
+
+    function almostEqual(a, b, tol) {
+      return Math.abs(a - b) <= (tol || 0.05);
+    }
+
+    function formatSlope(m) {
+      const f = toFractionApprox(m);
+      return formatFraction(f.num, f.den);
+    }
+
+    function formatEquation(m, b) {
+      const ms = formatSlope(m);
+      const bs = formatNum(b);
+      const absB = formatNum(Math.abs(b));
+      if (m === 0) return 'y = ' + bs;
+      const mx = ms === '1' ? 'x' : ms === '-1' ? '-x' : ms + 'x';
+      if (Math.abs(b) < 1e-9) return 'y = ' + mx;
+      const sign = b >= 0 ? ' + ' : ' - ';
+      return 'y = ' + mx + sign + absB;
+    }
+
+    // --- Challenge generators ---
+    function genSlopeFinder(level) {
+      const m = genSlope(level);
+      const b = genIntercept(level);
+      // Pick two x values for highlighted points
+      let x1 = randInt(-5, 2);
+      let x2 = x1 + randInt(1, 4);
+      if (level === 0) { x1 = randInt(0, 3); x2 = x1 + randInt(1, 3); }
+      const y1 = m * x1 + b;
+      const y2 = m * x2 + b;
+      return {
+        type: 'slope',
+        m, b, x1, y1, x2, y2,
+        answer: m,
+        answerStr: formatSlope(m),
+        prompt: `What is the slope of this line?`,
+      };
+    }
+
+    function genEquationBuilder(level) {
+      const m = genSlope(level);
+      const b = genIntercept(level);
+      let x1 = level === 0 ? randInt(0, 3) : randInt(-4, 2);
+      let x2 = x1 + randInt(1, 3);
+      const y1 = m * x1 + b;
+      const y2 = m * x2 + b;
+      return {
+        type: 'equation',
+        m, b, x1, y1, x2, y2,
+        answer: null, // validated by parseEquation
+        answerStr: formatEquation(m, b),
+        prompt: `Write the equation of this line (y = mx + b)`,
+      };
+    }
+
+    function genPointPredictor(level) {
+      const m = genSlope(level);
+      const b = genIntercept(level);
+      const xVal = level === 0 ? randInt(1, 5) : randInt(-6, 6);
+      const yVal = m * xVal + b;
+      return {
+        type: 'predict',
+        m, b,
+        x1: null, y1: null, x2: null, y2: null,
+        xVal,
+        answer: yVal,
+        answerStr: formatNum(yVal),
+        prompt: `If ${formatEquation(m, b)}, what is y when x = ${xVal}?`,
+      };
+    }
+
+    function pickChallenge() {
+      const level = AD ? AD.getLevel(MODE_KEY) : 1;
+      const roll = Math.random();
+      // 35% slope, 35% equation, 30% predict
+      if (roll < 0.35) return genSlopeFinder(level);
+      if (roll < 0.70) return genEquationBuilder(level);
+      return genPointPredictor(level);
+    }
+
+    // --- Chart integration ---
+    function stashUserData() {
+      const c = ensureChart();
+      savedDatasets = c.data.datasets.map(ds => ({ ...ds }));
+      challengeLock = true;
+    }
+
+    function restoreUserData() {
+      challengeLock = false;
+      savedDatasets = null;
+      updateChart(); // rebuilds from user series data
+    }
+
+    function showChallengeOnChart(ch) {
+      const c = ensureChart();
+
+      // For point predictor we don't draw a line, just show prompt text
+      if (ch.type === 'predict') {
+        c.data.datasets = [];
+        c.options.scales.x.min = -10;
+        c.options.scales.x.max = 10;
+        c.options.scales.y.min = -10;
+        c.options.scales.y.max = 10;
+        c.update();
+        return;
+      }
+
+      // Draw the challenge line + two highlighted points
+      const xMin = Math.min(ch.x1, ch.x2) - 3;
+      const xMax = Math.max(ch.x1, ch.x2) + 3;
+      const lineY1 = ch.m * (xMin - 1) + ch.b;
+      const lineY2 = ch.m * (xMax + 1) + ch.b;
+      const allY = [ch.y1, ch.y2, lineY1, lineY2, 0];
+      const yMin = Math.min(...allY) - 2;
+      const yMax = Math.max(...allY) + 2;
+
+      c.data.datasets = [
+        {
+          label: 'Mystery Line',
+          data: [{ x: xMin - 1, y: lineY1 }, { x: xMax + 1, y: lineY2 }],
+          borderColor: '#f59e0b',
+          borderWidth: 3,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          order: 1,
+        },
+        {
+          label: 'Points',
+          data: [{ x: ch.x1, y: ch.y1 }, { x: ch.x2, y: ch.y2 }],
+          borderColor: '#f59e0b',
+          backgroundColor: '#fbbf24',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 10,
+          pointStyle: 'circle',
+          showLine: false,
+          order: 0,
+        },
+      ];
+      c.options.scales.x.min = xMin - 1;
+      c.options.scales.x.max = xMax + 1;
+      c.options.scales.y.min = yMin;
+      c.options.scales.y.max = yMax;
+      c.update();
+    }
+
+    // --- UI state ---
+    function setActive(on) {
+      active = on;
+      if (idleEl) idleEl.hidden = on;
+      if (activeEl) activeEl.hidden = !on;
+      if (on) {
+        answerIn.value = '';
+        answerIn.focus();
+      }
+    }
+
+    function updateScoreDisplay() {
+      if (scoreEl) scoreEl.textContent = score + ' / ' + GOAL;
+    }
+
+    function updateDiffBadge() {
+      if (!AD) return;
+      const level = AD.getLevel(MODE_KEY);
+      AD.updateBadges(level);
+    }
+
+    function flashInput(cls) {
+      answerIn.classList.add(cls);
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => answerIn.classList.remove(cls), 800);
+    }
+
+    function showCorrectAnswer(text) {
+      // Briefly show the correct answer next to the prompt
+      const span = document.createElement('span');
+      span.className = 'ld-correct-answer';
+      span.textContent = ' Answer: ' + text;
+      if (promptEl) promptEl.appendChild(span);
+      setTimeout(() => span.remove(), 2000);
+    }
+
+    // --- Challenge flow ---
+    function startSession() {
+      score = 0;
+      questionNum = 0;
+      updateScoreDisplay();
+      updateDiffBadge();
+      stashUserData();
+      setActive(true);
+      nextQuestion();
+    }
+
+    function endSession() {
+      setActive(false);
+      restoreUserData();
+    }
+
+    function nextQuestion() {
+      if (questionNum >= GOAL) {
+        // Victory!
+        try { if (window.SoundFX) window.SoundFX.play('win'); } catch(_){}
+        if (promptEl) promptEl.textContent = 'Challenge complete! You scored ' + score + ' / ' + GOAL;
+        if (answerIn) answerIn.hidden = true;
+        if (checkBtn) checkBtn.hidden = true;
+        if (skipBtn) skipBtn.hidden = true;
+        // Auto-end after a few seconds
+        setTimeout(endSession, 4000);
+        return;
+      }
+      questionNum++;
+      current = pickChallenge();
+      if (typeBadge) {
+        const labels = { slope: 'SLOPE', equation: 'EQUATION', predict: 'PREDICT' };
+        typeBadge.textContent = labels[current.type] || current.type.toUpperCase();
+      }
+      if (promptEl) promptEl.textContent = current.prompt;
+      answerIn.value = '';
+      answerIn.hidden = false;
+      if (checkBtn) checkBtn.hidden = false;
+      if (skipBtn) skipBtn.hidden = false;
+      answerIn.focus();
+      showChallengeOnChart(current);
+      updateScoreDisplay();
+      updateDiffBadge();
+    }
+
+    function checkAnswer() {
+      if (!current || !active) return;
+      const raw = answerIn.value.trim();
+      if (!raw) return;
+
+      let correct = false;
+      const ch = current;
+
+      if (ch.type === 'slope') {
+        const val = parseFractionOrDecimal(raw);
+        if (Number.isFinite(val) && almostEqual(val, ch.answer, 0.05)) correct = true;
+      } else if (ch.type === 'equation') {
+        const parsed = parseEquation(raw);
+        if (parsed && almostEqual(parsed.m, ch.m, 0.05) && almostEqual(parsed.b, ch.b, 0.05)) correct = true;
+      } else if (ch.type === 'predict') {
+        const val = parseFractionOrDecimal(raw);
+        if (Number.isFinite(val) && almostEqual(val, ch.answer, 0.05)) correct = true;
+      }
+
+      const level = AD ? AD.getLevel(MODE_KEY) : 1;
+      const diffLabel = AD ? AD.getLabel(level) : 'Developing';
+
+      if (correct) {
+        score++;
+        flashInput('flash-correct');
+        try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
+        if (AD) {
+          const res = AD.recordResult(MODE_KEY, true);
+          if (res.levelChanged) {
+            bar.classList.remove('diff-up', 'diff-down');
+            void bar.offsetWidth; // force reflow
+            bar.classList.add(res.increased ? 'diff-up' : 'diff-down');
+          }
+        }
+      } else {
+        flashInput('flash-incorrect');
+        try { if (window.SoundFX) window.SoundFX.play('fail'); } catch(_){}
+        showCorrectAnswer(ch.answerStr);
+        if (AD) {
+          const res = AD.recordResult(MODE_KEY, false);
+          if (res.levelChanged) {
+            bar.classList.remove('diff-up', 'diff-down');
+            void bar.offsetWidth;
+            bar.classList.add(res.increased ? 'diff-up' : 'diff-down');
+          }
+        }
+      }
+
+      // Record result
+      try {
+        if (window.recordResult) {
+          window.recordResult({
+            mode: 'line',
+            game_name: 'Line Detective',
+            outcome: correct ? 'success' : 'incorrect',
+            score: correct ? 1 : 0,
+            details_json: {
+              challenge_type: ch.type,
+              difficulty: diffLabel,
+              m: ch.m,
+              b: ch.b,
+              question: questionNum,
+              correct,
+            },
+          }).catch(() => {});
+        }
+      } catch(_){}
+
+      updateScoreDisplay();
+      updateDiffBadge();
+
+      // Advance after brief delay (longer on incorrect to show answer)
+      setTimeout(nextQuestion, correct ? 600 : 2200);
+    }
+
+    function skipQuestion() {
+      if (!current || !active) return;
+      const level = AD ? AD.getLevel(MODE_KEY) : 1;
+      const diffLabel = AD ? AD.getLabel(level) : 'Developing';
+      const countAsIncorrect = level >= 2; // Proficient+
+
+      try { if (window.SoundFX) window.SoundFX.play('skip'); } catch(_){}
+      showCorrectAnswer(current.answerStr);
+
+      if (countAsIncorrect && AD) {
+        const res = AD.recordResult(MODE_KEY, false);
+        if (res.levelChanged) {
+          bar.classList.remove('diff-up', 'diff-down');
+          void bar.offsetWidth;
+          bar.classList.add(res.increased ? 'diff-up' : 'diff-down');
+        }
+      }
+
+      // Record skip
+      try {
+        if (window.recordResult) {
+          window.recordResult({
+            mode: 'line',
+            game_name: 'Line Detective',
+            outcome: countAsIncorrect ? 'incorrect' : 'success',
+            score: 0,
+            details_json: {
+              challenge_type: current.type,
+              difficulty: diffLabel,
+              m: current.m,
+              b: current.b,
+              question: questionNum,
+              skipped: true,
+            },
+          }).catch(() => {});
+        }
+      } catch(_){}
+
+      updateDiffBadge();
+      setTimeout(nextQuestion, 1800);
+    }
+
+    // --- Event wiring ---
+    startBtn.addEventListener('click', startSession);
+    endBtn.addEventListener('click', endSession);
+    skipBtn.addEventListener('click', skipQuestion);
+    checkBtn.addEventListener('click', checkAnswer);
+    answerIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); checkAnswer(); }
+    });
+
+    // Init badge on load
+    updateDiffBadge();
   })();
 
   // Escape clears selection of all rows in Line Graph Mode

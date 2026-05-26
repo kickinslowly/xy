@@ -109,6 +109,30 @@
     </nav>
   </header>
 
+  <!-- Line Detective Challenge Bar -->
+  <div class="challenge-bar" id="lineDetectiveBar" role="region" aria-label="Line Detective challenge mode">
+    <div class="challenge-bar-inner">
+      <div class="challenge-idle" id="ldIdle">
+        <span class="challenge-bar-icon" aria-hidden="true">&#x1F50D;</span>
+        <span class="challenge-bar-label">Line Detective</span>
+        <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
+        <button id="ldStartBtn" type="button" class="btn-3d warn challenge-cta">Start Challenge</button>
+      </div>
+      <div class="challenge-active" id="ldActive" hidden>
+        <span class="challenge-type-badge" id="ldTypeBadge">SLOPE</span>
+        <span class="difficulty-badge" title="Difficulty adjusts as you play"></span>
+        <span class="ld-score" id="ldScore" aria-live="polite">0 / 10</span>
+        <span id="ldPrompt" class="challenge-prompt-text" aria-live="polite"></span>
+        <div class="challenge-controls">
+          <input id="ldAnswerInput" type="text" class="ld-answer-input" placeholder="Answer..." autocomplete="off" aria-label="Your answer" />
+          <button id="ldCheckBtn" type="button" class="btn-3d btn-sm">Check</button>
+          <button id="ldSkipBtn" type="button" class="btn-3d btn-sm challenge-skip-btn">Skip</button>
+          <button id="ldEndBtn" type="button" class="btn-light btn-sm challenge-stop-btn">End</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <main class="game-layout full-bleed">
     <aside class="game-sidebar" aria-label="Data tables">
       <div id="mathInfoLine" class="line-info-card">
@@ -146,5 +170,6 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="{{ url_for('static', filename='line_mode.js') }}?v=20250920"></script>
+  <script src="{{ url_for('static', filename='adaptive_difficulty.js') }}?v=20250525"></script>
+  <script src="{{ url_for('static', filename='line_mode.js') }}?v=20250525"></script>
 {% endblock %}

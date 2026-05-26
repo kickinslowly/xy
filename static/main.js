@@ -540,6 +540,8 @@
   let challengeActive = false;
   let currentChallenge = null; // { type: 'line', m, b, label }
   let wrongTimer = null;
+  let challengeCorrectCount = 0;
+  const challengeScoreEl = document.getElementById('challengeCorrect');
 
   // Adaptive difficulty: 0=Beginner, 1=Developing, 2=Proficient, 3=Advanced.
   // State + streak math live in static/adaptive_difficulty.js (shared with ratios_mode.js).
@@ -788,9 +790,8 @@
   function setChallengeActive(on) {
     challengeActive = !!on;
     if (challengeActive) {
-      // Force grid step to 1 so generated integer-coordinate challenges are
-      // always reachable on the snap grid (otherwise step 2/5 makes some
-      // midpoints / reflections unreachable).
+      challengeCorrectCount = 0;
+      if (challengeScoreEl) challengeScoreEl.textContent = '0';
       try {
         if (gridStepSelect && gridStepSelect.value !== '1') {
           gridStepSelect.value = '1';
@@ -942,6 +943,8 @@
     if (!rewardToast) return;
     rewardToast.hidden = false;
     rewardToast.classList.add('show');
+    challengeCorrectCount++;
+    if (challengeScoreEl) challengeScoreEl.textContent = String(challengeCorrectCount);
     try { if (window.SoundFX) window.SoundFX.play('success'); } catch(_){}
   }
   function hideRewardToast() {

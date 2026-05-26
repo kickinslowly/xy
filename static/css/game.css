@@ -2246,6 +2246,62 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   font-size: 13px !important;
 }
 .challenge-stop-btn:hover { opacity: 1; }
+
+.challenge-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: color-mix(in srgb, var(--mode, var(--accent)) 15%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--mode, var(--accent)) 30%, var(--border));
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--mode, var(--accent));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Line Detective — answer input & score counter */
+.ld-answer-input {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  width: 140px;
+  transition: border-color 0.2s;
+}
+.ld-answer-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.ld-answer-input.flash-correct {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+}
+.ld-answer-input.flash-incorrect {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+.ld-score {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--accent);
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.ld-correct-answer {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--warn);
+  white-space: nowrap;
+}
 .difficulty-badge {
   display: inline-block;
   font-size: 12px;
@@ -2757,4 +2813,119 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
 .sunk-toast-show {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
+}
+
+/* ---- Ship Placement Phase ---- */
+.placement-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.placement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.placement-ship-name {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  transition: color 0.2s;
+}
+.placement-progress {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.placement-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.placement-btn {
+  font-size: 13px;
+  padding: 6px 14px;
+}
+.placement-ready-btn {
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 24px;
+  background: #22c55e;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.placement-ready-btn:hover:not(:disabled) {
+  background: #16a34a;
+  transform: scale(1.03);
+}
+.placement-ready-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.placement-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.placement-toast {
+  font-size: 13px;
+  font-weight: 700;
+  color: #38bdf8;
+  padding: 4px 0;
+  animation: placementToastIn 0.3s ease-out;
+}
+@keyframes placementToastIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Placement preview ghost (hover) */
+.cell.placement-preview {
+  outline: 2px solid rgba(56, 189, 248, 0.6);
+  outline-offset: -2px;
+  z-index: 1;
+}
+.cell.placement-preview-invalid {
+  outline-color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+/* Placed ship cells */
+.cell.placement-placed {
+  outline: 1px solid rgba(255, 255, 255, 0.15);
+  outline-offset: -1px;
+}
+
+/* Invalid flash */
+.cell.placement-invalid {
+  animation: placementFlashRed 0.4s ease-out;
+}
+@keyframes placementFlashRed {
+  0%   { background-color: rgba(239, 68, 68, 0.5); }
+  100% { background-color: transparent; }
+}
+
+/* During placement, make your board cells look interactive */
+.mode-battleship .tabpanel .board .cell {
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .placement-panel { padding: 8px 10px; }
+  .placement-ship-name { font-size: 14px; }
+  .placement-controls { gap: 6px; }
+  .placement-btn { font-size: 12px; padding: 5px 10px; }
+  .placement-ready-btn { font-size: 13px; padding: 7px 16px; }
 }
