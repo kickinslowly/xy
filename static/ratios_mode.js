@@ -174,7 +174,7 @@
     if (memes.length < 2) return null; // Need two distinct memes for any ratio prompt
     let nowKind = kind || sharedState.mode || 'create';
     if (nowKind === 'master') {
-      const kinds = ['create', 'partpart', 'partwhole', 'equiv'];
+      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table'];
       // Anti-repeat: re-roll once if we'd repeat the previous kind. Keeps
       // master mode varied without dropping any kind from rotation.
       let pick = kinds[Math.floor(Math.random() * kinds.length)];
@@ -185,6 +185,68 @@
       _lastMasterKind = pick;
     }
 
+    if (nowKind === 'unitrate') {
+      const [aSrc, bSrc] = pick2(memes);
+      // b is the "per 1" denominator; a is the total of the other meme.
+      // At Beginner/Developing: a is always evenly divisible by b.
+      let b = rnd(2, challengeDifficulty >= 2 ? 6 : 4);
+      let a;
+      if (challengeDifficulty <= 1) {
+        // Always divides evenly
+        const mult = rnd(2, challengeDifficulty === 0 ? 3 : 5);
+        a = b * mult;
+      } else {
+        // May not divide evenly at Proficient+
+        a = rnd(3, 12);
+        if (a === b) a = b + 1;
+      }
+      // answer: a / b  (how many aSrc per 1 bSrc)
+      return { type: 'unitrate', aSrc, bSrc, a, b, answer: a / b };
+    }
+    if (nowKind === 'table') {
+      const [aSrc, bSrc] = pick2(memes);
+      // Base ratio a : b  (small, coprime-ish)
+      const a = rnd(1, challengeDifficulty >= 2 ? 5 : 3);
+      let b = rnd(1, challengeDifficulty >= 2 ? 5 : 3);
+      if (b === a && a < 5) b = a + 1;
+      // Build 4 rows with multipliers
+      const mults = [1, 2, 3, 4];
+      if (challengeDifficulty >= 2) { mults[2] = rnd(3, 5); mults[3] = rnd(5, 8); }
+      if (challengeDifficulty >= 3) { mults[1] = rnd(2, 4); mults[2] = rnd(4, 7); mults[3] = rnd(6, 10); }
+      const rows = mults.map(m => ({ aVal: a * m, bVal: b * m }));
+      // Decide which cells are blank
+      // First row is always shown as the "seed". Pick 2 or 3 blanks from rows 1-3.
+      const numBlanks = challengeDifficulty >= 2 ? 3 : 2;
+      const blanks = []; // each: { row, col } where col='a' or 'b'
+      const available = [];
+      for (let r = 1; r <= 3; r++) {
+        available.push({ row: r, col: 'a' });
+        available.push({ row: r, col: 'b' });
+      }
+      // Shuffle and pick
+      for (let i = available.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [available[i], available[j]] = [available[j], available[i]];
+      }
+      // Ensure no row has both cells blank (student needs at least one clue per row)
+      const usedRows = new Set();
+      for (const slot of available) {
+        if (blanks.length >= numBlanks) break;
+        if (usedRows.has(slot.row)) continue;
+        blanks.push(slot);
+        usedRows.add(slot.row);
+      }
+      // If we still need blanks, allow a second blank in a row that already has one
+      // only if the other cell provides enough info (the base ratio is known from row 0)
+      if (blanks.length < numBlanks) {
+        for (const slot of available) {
+          if (blanks.length >= numBlanks) break;
+          if (blanks.some(b => b.row === slot.row && b.col === slot.col)) continue;
+          blanks.push(slot);
+        }
+      }
+      return { type: 'table', aSrc, bSrc, a, b, rows, blanks };
+    }
     if (nowKind === 'equiv') {
       const [aSrc, bSrc] = pick2(memes);
       let a = rndForDifficulty(), b = rndForDifficulty();
@@ -264,6 +326,55 @@
         </div>
       `;
     }
+    if (ch.type === 'unitrate') {
+      const decimalsOk = challengeDifficulty >= 2 && (ch.a % ch.b !== 0);
+      const hint = decimalsOk ? ' (round to 1 decimal place)' : '';
+      return `
+        <div class="rp-wrap">
+          <div class="rp-label">Unit Rate${hint}</div>
+          <div class="ratio-prompt" role="group" aria-label="Unit rate prompt">
+            <div class="row images">
+              <img class="rp-img" src="${ch.aSrc}" alt="meme A" />
+              <span class="rp-colon">:</span>
+              <img class="rp-img" src="${ch.bSrc}" alt="meme B" />
+            </div>
+            <div class="row numbers">
+              <span class="rp-num">${ch.a}</span>
+              <span class="rp-colon">:</span>
+              <span class="rp-num">${ch.b}</span>
+            </div>
+          </div>
+          <div class="rp-label" style="margin-top:10px;">How many ${imgBadge(ch.aSrc)} per 1 ${imgBadge(ch.bSrc)} ?</div>
+          <div style="text-align:center; margin-top:8px;">
+            <input id="unitRateInput" type="number" step="any" inputmode="decimal" placeholder="?"
+              style="width:120px; padding:8px 12px; font-weight:900; font-size:24px; text-align:center;
+              border:2px solid var(--border); border-radius:12px; background:var(--surface-2);
+              color:var(--text); box-shadow:0 4px 12px rgba(0,0,0,0.2);" />
+          </div>
+        </div>
+      `;
+    }
+    if (ch.type === 'table') {
+      let tableHTML = '<div class="rp-wrap" style="width:100%;">';
+      tableHTML += '<div class="rp-label">Complete the ratio table</div>';
+      tableHTML += '<table class="ratio-table" role="grid" aria-label="Ratio table">';
+      tableHTML += `<thead><tr><th>${imgBadge(ch.aSrc)}</th><th>${imgBadge(ch.bSrc)}</th></tr></thead>`;
+      tableHTML += '<tbody>';
+      const blankSet = new Set(ch.blanks.map(b => `${b.row}-${b.col}`));
+      ch.rows.forEach((row, idx) => {
+        const aBlank = blankSet.has(`${idx}-a`);
+        const bBlank = blankSet.has(`${idx}-b`);
+        const aCell = aBlank
+          ? `<input class="rt-blank" data-row="${idx}" data-col="a" type="number" min="0" step="1" inputmode="numeric" placeholder="?" />`
+          : `<span class="rt-given">${row.aVal}</span>`;
+        const bCell = bBlank
+          ? `<input class="rt-blank" data-row="${idx}" data-col="b" type="number" min="0" step="1" inputmode="numeric" placeholder="?" />`
+          : `<span class="rt-given">${row.bVal}</span>`;
+        tableHTML += `<tr><td>${aCell}</td><td>${bCell}</td></tr>`;
+      });
+      tableHTML += '</tbody></table></div>';
+      return tableHTML;
+    }
     if (ch.type === 'partpart') {
       return `
         <div class="rp-wrap">
@@ -308,7 +419,8 @@
 
   function updateLayoutForCurrent() {
     if (!board) return;
-    if (sharedState.current && sharedState.current.type === 'partwhole') {
+    const t = sharedState.current && sharedState.current.type;
+    if (t === 'partwhole' || t === 'unitrate' || t === 'table') {
       board.style.display = 'none';
     } else {
       board.style.display = '';
@@ -400,6 +512,41 @@
         // but not the exact same counts (to enforce "equivalent", not identical).
         correct = (aCount * ch.b === bCount * ch.a) && !(aCount === ch.a && bCount === ch.b);
       }
+    } else if (ch.type === 'unitrate') {
+      const inp = qs('#unitRateInput');
+      const val = parseFloat(inp && inp.value);
+      if (Number.isNaN(val)) {
+        showToast('Enter a number');
+        _submitLock = false;
+        return;
+      }
+      const expected = ch.a / ch.b;
+      // At Beginner/Developing the answer is always an integer; at higher levels accept 1-decimal rounding
+      if (challengeDifficulty >= 2 && (ch.a % ch.b !== 0)) {
+        correct = Math.abs(val - expected) < 0.05 + Number.EPSILON;
+      } else {
+        correct = Math.abs(val - expected) < 0.001;
+      }
+    } else if (ch.type === 'table') {
+      const blanks = ch.blanks || [];
+      const inputs = qsa('.rt-blank');
+      if (inputs.length === 0) { _submitLock = false; return; }
+      let allCorrect = true;
+      let anyEmpty = false;
+      for (const inp of inputs) {
+        const r = parseInt(inp.dataset.row, 10);
+        const c = inp.dataset.col;
+        const val = parseInt(inp.value, 10);
+        if (Number.isNaN(val)) { anyEmpty = true; break; }
+        const expected = c === 'a' ? ch.rows[r].aVal : ch.rows[r].bVal;
+        if (val !== expected) { allCorrect = false; break; }
+      }
+      if (anyEmpty) {
+        showToast('Fill in all blanks');
+        _submitLock = false;
+        return;
+      }
+      correct = allCorrect;
     } else if (ch.type === 'partwhole') {
       const which = ch.which === 'b' ? 'b' : 'a'; // default to 'a' for older states
       const partInput = qs('#pwPartInput');
@@ -485,6 +632,8 @@
       case 'partpart': return 'Part-to-Part Ratio';
       case 'partwhole': return 'Part-to-Whole Ratio';
       case 'equiv': return 'Equivalent Ratio';
+      case 'unitrate': return 'Unit Rate';
+      case 'table': return 'Ratio Table';
       case 'master': return 'Master of Ratios';
       default: return 'Ratios';
     }
@@ -708,11 +857,17 @@
   // Event wiring
   submitBtn.addEventListener('click', handleSubmit);
   clearBtn.addEventListener('click', () => {
-    if (sharedState.current && sharedState.current.type === 'partwhole') {
+    const t = sharedState.current && sharedState.current.type;
+    if (t === 'partwhole') {
       const p = qs('#pwPartInput');
-      const t = qs('#pwTotalInput');
+      const total = qs('#pwTotalInput');
       if (p) p.value = '';
-      if (t) t.value = '';
+      if (total) total.value = '';
+    } else if (t === 'unitrate') {
+      const inp = qs('#unitRateInput');
+      if (inp) inp.value = '';
+    } else if (t === 'table') {
+      qsa('.rt-blank').forEach(inp => { inp.value = ''; });
     } else {
       resetBoard();
     }
@@ -741,7 +896,7 @@
       p.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
     if (selected === 'master') {
-      const kinds = ['create', 'partpart', 'partwhole', 'equiv'];
+      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table'];
       const pick = kinds[Math.floor(Math.random() * kinds.length)];
       sharedState.current = generateChallenge(pick);
     } else {

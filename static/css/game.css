@@ -2419,6 +2419,7 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   justify-content: center;
   align-items: center;
   padding: 10px;
+  touch-action: none;
 }
 
 #plane {
@@ -2928,4 +2929,49 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .placement-controls { gap: 6px; }
   .placement-btn { font-size: 12px; padding: 5px 10px; }
   .placement-ready-btn { font-size: 13px; padding: 7px 16px; }
+}
+
+/* ---- 25. Meme Dash Touch & Responsive ---- */
+#gameCanvas { touch-action: none; }
+.game-canvas-wrap {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.game-canvas-wrap canvas {
+  width: 100%;
+  height: auto;
+}
+
+/* Touch zone hint (shows briefly on first touch) */
+.touch-zones {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.touch-zones.visible { opacity: 1; }
+.touch-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  border-right: 1px dashed rgba(255,255,255,0.15);
+}
+.touch-zone:last-child { border-right: none; }
+
+/* ---- 26. Mobile Nav Fix ---- */
+@media (max-width: 1100px) {
+  .modes-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .modes-nav::-webkit-scrollbar { display: none; }
+  .mode-link { white-space: nowrap; flex-shrink: 0; font-size: 13px; padding: 6px 10px; }
 }

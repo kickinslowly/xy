@@ -454,10 +454,66 @@
     if (document.hidden) _clearHeldKeys();
   });
 
+  // Touch controls: left third = move left, right third = move right, middle = jump
+  const activeTouches = new Map();
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    showTouchHint();
+    for (const t of e.changedTouches) {
+      activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    }
+    updateTouchInput();
+    sendInputUpdate();
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    }
+    updateTouchInput();
+    sendInputUpdate();
+  }, { passive: false });
+  canvas.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+    updateTouchInput();
+    sendInputUpdate();
+  });
+  canvas.addEventListener('touchcancel', (e) => {
+    for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+    updateTouchInput();
+    sendInputUpdate();
+  });
+
+  // Show touch zone hints on first touch
+  const touchZonesEl = document.getElementById('touchZones');
+  let _touchHintShown = false;
+  function showTouchHint() {
+    if (_touchHintShown || !touchZonesEl) return;
+    _touchHintShown = true;
+    touchZonesEl.classList.add('visible');
+    setTimeout(() => touchZonesEl.classList.remove('visible'), 2500);
+  }
+
+  let touchLeft = false, touchRight = false, touchUp = false;
+  function updateTouchInput() {
+    touchLeft = false; touchRight = false; touchUp = false;
+    const rect = canvas.getBoundingClientRect();
+    const thirdW = rect.width / 3;
+    for (const t of activeTouches.values()) {
+      const rx = t.x - rect.left;
+      if (rx < thirdW) touchLeft = true;
+      else if (rx > thirdW * 2) touchRight = true;
+      else touchUp = true;
+    }
+    // Two-finger anywhere = jump (for accessibility)
+    if (activeTouches.size >= 2) touchUp = true;
+    updateInput();
+  }
+
   function updateInput(){
-    my.input.left = keys.has('a') || keys.has('A') || keys.has('ArrowLeft');
-    my.input.right = keys.has('d') || keys.has('D') || keys.has('ArrowRight');
-    my.input.up = keys.has('w') || keys.has('W') || keys.has('ArrowUp') || keys.has(' ');
+    my.input.left = keys.has('a') || keys.has('A') || keys.has('ArrowLeft') || touchLeft;
+    my.input.right = keys.has('d') || keys.has('D') || keys.has('ArrowRight') || touchRight;
+    my.input.up = keys.has('w') || keys.has('W') || keys.has('ArrowUp') || keys.has(' ') || touchUp;
   }
 
   let lastInputSent = { left: false, right: false, up: false };
@@ -598,12 +654,26 @@
     const upEdge = !!inp.up && !p.prevUp;
     const djActive = (p.doubleJumpEndsAt || 0) > Date.now();
 
-    if (inp.up && p.grounded) {
+    // Coyote time: allow jumping for 80ms after leaving ground
+    if (p.grounded) {
+      p._lastGroundedAt = Date.now();
+    }
+    const coyote = !p.grounded && (Date.now() - (p._lastGroundedAt || 0)) < 80;
+    // Jump buffer: remember jump input for 100ms before landing
+    if (upEdge) p._jumpBufferedAt = Date.now();
+    const buffered = (Date.now() - (p._jumpBufferedAt || 0)) < 100;
+
+    const canGroundJump = p.grounded || coyote;
+    const wantsJump = (inp.up && canGroundJump) || (buffered && p.grounded);
+
+    if (wantsJump && (p.grounded || coyote)) {
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.grounded = false;
+      p._lastGroundedAt = 0;
+      p._jumpBufferedAt = 0;
       p.usedSecondJump = false;
       if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('jump'); } catch(_){} }
-    } else if (upEdge && !p.grounded && djActive && !p.usedSecondJump) {
+    } else if (upEdge && !p.grounded && !coyote && djActive && !p.usedSecondJump) {
       p.vy = -JUMP_VELOCITY * jumpScale;
       p.usedSecondJump = true;
       if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('jump'); } catch(_){} }

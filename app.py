@@ -792,7 +792,9 @@ CHALLENGE_STANDARD_MAP = {
     ('ratios', 'partpart'):    ['6.RP.A.1'],
     ('ratios', 'partwhole'):   ['6.RP.A.1', '6.RP.A.3'],
     ('ratios', 'equiv'):       ['6.RP.A.3', '6.RP.A.3a'],
-    ('ratios', 'master'):      ['6.RP.A.1', '6.RP.A.3'],
+    ('ratios', 'unitrate'):    ['6.RP.A.2', '6.RP.A.3'],
+    ('ratios', 'table'):       ['6.RP.A.3', '6.RP.A.3a'],
+    ('ratios', 'master'):      ['6.RP.A.1', '6.RP.A.3', '6.RP.A.2'],
     ('ratios', 'ratio'):       ['6.RP.A.1'],
     # Battleship / Meme Wars (coordinate grid navigation)
     ('battleship', 'battleship'): ['5.G.A.1', '6.NS.C.6b'],

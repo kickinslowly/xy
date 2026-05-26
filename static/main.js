@@ -2503,9 +2503,105 @@
   let panMoved = false;
   let lastMousePos = null;
 
+  // ─── Multi-touch / Pointer tracking ───
+  // Track all active pointers for pinch-zoom and two-finger pan
+  const activePointers = new Map(); // pointerId -> {x, y, clientX, clientY}
+  let pinchActive = false;
+  let pinchStartDist = 0;
+  let pinchStartPPU = 0;
+  let pinchLastMid = null;  // screen coords {x, y}
+  // When a single-finger drag is interrupted by a second finger, we need to
+  // cancel the single-finger operation and switch to pinch mode.
+  function cancelSinglePointerOps() {
+    if (isDragging) {
+      // revert vertex to start position
+      if (isGroupDrag && groupDragStartPositions) {
+        for (const [id, start] of groupDragStartPositions.entries()) {
+          const v = vertices.find(v => v.id === id);
+          if (v) { v.x = start.x; v.y = start.y; }
+        }
+      } else if (dragVertex && dragStartPos) {
+        dragVertex.x = dragStartPos.x;
+        dragVertex.y = dragStartPos.y;
+      }
+      isDragging = false;
+      dragVertex = null;
+      isGroupDrag = false;
+      groupDragStartPositions = null;
+      dragStartPos = null;
+      dragMoved = false;
+    }
+    if (isDraggingImage) {
+      // revert image vertices
+      if (imageDragStartVertices) {
+        for (const [vid, start] of imageDragStartVertices.entries()) {
+          const v = vertices.find(x => x.id === vid);
+          if (v && start) { v.x = start.x; v.y = start.y; }
+        }
+        if (dragImage) updateImageDependentCorner(dragImage);
+      }
+      isDraggingImage = false;
+      dragImage = null;
+      imageDragStartWorld = null;
+      imageDragStartVertices = null;
+      imageDragMoved = false;
+    }
+    if (imageAction && imageAction.image) {
+      imageAction = null;
+    }
+    if (isPanning && !isSpacePan) {
+      isPanning = false;
+      lastMousePos = null;
+      panMoved = false;
+    }
+    rectSelectPending = false;
+    isRectSelecting = false;
+    rectStart = null;
+    rectCurrent = null;
+    rectMoved = false;
+    suppressNextClick = true;
+  }
+
+  function getPointerScreenPos(evt) {
+    return getMousePos(evt); // works for pointer events (clientX/clientY)
+  }
+
+  function pinchDistance(p1, p2) {
+    const dx = p1.clientX - p2.clientX;
+    const dy = p1.clientY - p2.clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function pinchMidpoint(p1, p2) {
+    // Return midpoint in canvas-local coords
+    const rect = canvas.getBoundingClientRect();
+    const mx = ((p1.clientX + p2.clientX) / 2 - rect.left) * (canvas.width / rect.width);
+    const my = ((p1.clientY + p2.clientY) / 2 - rect.top) * (canvas.height / rect.height);
+    return { x: mx, y: my };
+  }
+
   // Drag start / Pan start
-  canvas.addEventListener('mousedown', (evt) => {
-    if (evt.button !== 0) return; // left button only
+  canvas.addEventListener('pointerdown', (evt) => {
+    // Track this pointer
+    activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY, clientX: evt.clientX, clientY: evt.clientY });
+    // Capture so we get move/up even if finger leaves canvas
+    try { canvas.setPointerCapture(evt.pointerId); } catch(e) {}
+
+    // If two fingers are now down, switch to pinch-zoom/pan mode
+    if (activePointers.size === 2) {
+      cancelSinglePointerOps();
+      const [p1, p2] = [...activePointers.values()];
+      pinchActive = true;
+      pinchStartDist = pinchDistance(p1, p2);
+      pinchStartPPU = pixelsPerUnit;
+      pinchLastMid = pinchMidpoint(p1, p2);
+      evt.preventDefault();
+      return;
+    }
+    // If more than 2 fingers, ignore additional
+    if (activePointers.size > 2) { evt.preventDefault(); return; }
+
+    if (evt.button !== 0) return; // left button only (mouse); touch has button=0
     const ms = getMousePos(evt);
 
     // If Space is held, start panning instead of vertex drag
@@ -2680,7 +2776,40 @@
   });
 
   // Drag move / Pan move
-  window.addEventListener('mousemove', (evt) => {
+  window.addEventListener('pointermove', (evt) => {
+    // Update tracked pointer position
+    if (activePointers.has(evt.pointerId)) {
+      activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY, clientX: evt.clientX, clientY: evt.clientY });
+    }
+
+    // Pinch-zoom / two-finger pan
+    if (pinchActive && activePointers.size >= 2) {
+      const ptrs = [...activePointers.values()];
+      const p1 = ptrs[0], p2 = ptrs[1];
+      const dist = pinchDistance(p1, p2);
+      const mid = pinchMidpoint(p1, p2);
+
+      // Zoom: ratio of current distance to start distance
+      if (pinchStartDist > 0) {
+        const newPPU = pinchStartPPU * (dist / pinchStartDist);
+        setPixelsPerUnit(newPPU, mid);
+      }
+
+      // Pan: shift of the midpoint since last frame
+      if (pinchLastMid) {
+        const dx = mid.x - pinchLastMid.x;
+        const dy = mid.y - pinchLastMid.y;
+        if (dx !== 0 || dy !== 0) {
+          origin.x += dx;
+          origin.y += dy;
+          draw();
+        }
+      }
+      pinchLastMid = mid;
+      evt.preventDefault();
+      return;
+    }
+
     // Update reflect preview while picking the second point
     if (reflect.active && reflect.p1 && !isPanning) {
       const ms = getMousePos(evt);
@@ -2940,8 +3069,56 @@
     evt.preventDefault();
   });
 
+  // Pointer cancel (treat like pointerup)
+  window.addEventListener('pointercancel', (evt) => {
+    activePointers.delete(evt.pointerId);
+    if (activePointers.size < 2 && pinchActive) {
+      pinchActive = false;
+      pinchLastMid = null;
+      suppressNextClick = true;
+    }
+    // Clean up any drag state
+    if (isDragging) {
+      isDragging = false;
+      dragVertex = null;
+      isGroupDrag = false;
+      groupDragStartPositions = null;
+      dragStartPos = null;
+      dragMoved = false;
+    }
+    if (isDraggingImage) {
+      isDraggingImage = false;
+      dragImage = null;
+      imageDragStartWorld = null;
+      imageDragStartVertices = null;
+      imageDragMoved = false;
+    }
+    if (imageAction) imageAction = null;
+    if (isPanning && !isSpacePan) {
+      isPanning = false;
+      lastMousePos = null;
+      panMoved = false;
+    }
+    rectSelectPending = false;
+    isRectSelecting = false;
+    rectStart = null;
+    rectCurrent = null;
+    rectMoved = false;
+    draw();
+  });
+
   // Drag end / Pan end
-  window.addEventListener('mouseup', (evt) => {
+  window.addEventListener('pointerup', (evt) => {
+    activePointers.delete(evt.pointerId);
+    // If we were in pinch mode and a finger lifts, end pinch
+    if (pinchActive) {
+      pinchActive = false;
+      pinchLastMid = null;
+      suppressNextClick = true;
+      // If one finger remains, don't start a new drag from it
+      evt.preventDefault();
+      return;
+    }
     // Commit rotation if rotating
     if (rotate.active && rotate.isRotating) {
       const ang = rotate.previewAngle || 0;
