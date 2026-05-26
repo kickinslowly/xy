@@ -3236,3 +3236,105 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .summary-stats { gap: 12px; }
   .summary-num { font-size: 28px; }
 }
+
+/* ─── Slope & Intercept Explorer ──────────────────────────────────── */
+.slope-explorer {
+  background: var(--surface, #1e1e2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.slope-explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.slope-explorer-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text, #e0e0e0);
+  letter-spacing: 0.3px;
+}
+.slope-explorer-body[hidden] { display: none; }
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.slider-row label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #aaa);
+  white-space: nowrap;
+}
+.slider-row label small {
+  font-weight: 400;
+  opacity: 0.7;
+}
+.slider-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f59e0b;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+}
+
+/* Range input styling (cross-browser dark theme) */
+.slope-explorer input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border, #444);
+  outline: none;
+  cursor: pointer;
+}
+.slope-explorer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid var(--surface, #1e1e2e);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+}
+.slope-explorer input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid var(--surface, #1e1e2e);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+}
+.slope-explorer input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5);
+}
+.slope-explorer input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5);
+}
+
+.slider-equation {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f59e0b;
+  padding: 6px 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 600px) {
+  .slider-row { grid-template-columns: 70px 1fr 36px; gap: 6px; }
+  .slider-equation { font-size: 16px; }
+}

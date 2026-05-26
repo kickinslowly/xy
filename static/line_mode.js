@@ -2112,4 +2112,143 @@
       }
     }
   });
+
+  // ─── Slope & Intercept Explorer ────────────────────────────────────
+  (function initSlopeExplorer() {
+    const panel      = qs('#slopeExplorer');
+    const body       = qs('#slopeExplorerBody');
+    const toggleBtn  = qs('#slopeExplorerToggle');
+    const mSlider    = qs('#slopeSlider');
+    const bSlider    = qs('#interceptSlider');
+    const mDisplay   = qs('#slopeValue');
+    const bDisplay   = qs('#interceptValue');
+    const eqDisplay  = qs('#sliderEquation');
+    if (!panel || !mSlider || !bSlider) return;
+
+    const EXPLORER_LABEL = 'y = mx + b (explorer)';
+    let explorerVisible = true;
+
+    function formatEquation(m, b) {
+      m = +m; b = +b;
+      // Round to avoid float noise (e.g. 0.30000000000000004)
+      m = Math.round(m * 100) / 100;
+      b = Math.round(b * 100) / 100;
+
+      if (m === 0 && b === 0) return 'y = 0';
+      if (m === 0) return 'y = ' + b;
+
+      let mStr;
+      if (m === 1) mStr = '';
+      else if (m === -1) mStr = '-';
+      else mStr = String(m);
+
+      let bStr;
+      if (b === 0) bStr = '';
+      else if (b > 0) bStr = ' + ' + b;
+      else bStr = ' − ' + Math.abs(b); // minus sign
+
+      return 'y = ' + mStr + 'x' + bStr;
+    }
+
+    function getExplorerDatasetIndex(c) {
+      return c.data.datasets.findIndex(ds => ds.label === EXPLORER_LABEL);
+    }
+
+    function removeExplorerDataset() {
+      if (!chart) return;
+      const idx = getExplorerDatasetIndex(chart);
+      if (idx !== -1) {
+        chart.data.datasets.splice(idx, 1);
+        chart.update();
+      }
+    }
+
+    function updateExplorerLine() {
+      if (!explorerVisible || challengeLock) { removeExplorerDataset(); return; }
+
+      const c = ensureChart();
+      const m = parseFloat(mSlider.value);
+      const b = parseFloat(bSlider.value);
+
+      // Use the chart's current visible x range (or sensible defaults)
+      let xMin = c.options.scales.x.min;
+      let xMax = c.options.scales.x.max;
+      if (!Number.isFinite(xMin)) xMin = -10;
+      if (!Number.isFinite(xMax)) xMax = 10;
+      // Extend slightly beyond visible bounds so line reaches edges
+      const pad = (xMax - xMin) * 0.1;
+      const x1 = xMin - pad;
+      const x2 = xMax + pad;
+      const y1 = m * x1 + b;
+      const y2 = m * x2 + b;
+
+      const ds = {
+        label: EXPLORER_LABEL,
+        data: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+        borderColor: '#f59e0b',
+        borderWidth: 2,
+        borderDash: [8, 4],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        tension: 0,
+        order: -1, // draw on top
+      };
+
+      const idx = getExplorerDatasetIndex(c);
+      if (idx !== -1) {
+        c.data.datasets[idx] = ds;
+      } else {
+        c.data.datasets.push(ds);
+      }
+      c.update();
+    }
+
+    function onSliderInput() {
+      const m = parseFloat(mSlider.value);
+      const b = parseFloat(bSlider.value);
+      mDisplay.textContent = m;
+      bDisplay.textContent = b;
+      eqDisplay.textContent = formatEquation(m, b);
+      updateExplorerLine();
+    }
+
+    mSlider.addEventListener('input', onSliderInput);
+    bSlider.addEventListener('input', onSliderInput);
+
+    // Toggle visibility
+    toggleBtn.addEventListener('click', () => {
+      explorerVisible = !explorerVisible;
+      body.hidden = !explorerVisible;
+      toggleBtn.textContent = explorerVisible ? 'Hide' : 'Show';
+      if (explorerVisible) {
+        updateExplorerLine();
+      } else {
+        removeExplorerDataset();
+      }
+    });
+
+    // Re-sync explorer line whenever updateChart runs (axis bounds may change).
+    // Monkey-patch: wrap the existing updateChart so explorer stays in sync.
+    const _origUpdateChart = updateChart;
+    updateChart = function() {
+      _origUpdateChart();
+      if (explorerVisible && !challengeLock) updateExplorerLine();
+    };
+
+    // Hide explorer during Line Detective challenges.
+    // Use MutationObserver on #ldActive so we catch both manual end and auto-end.
+    const ldActiveEl = qs('#ldActive');
+    if (ldActiveEl) {
+      const obs = new MutationObserver(() => {
+        const challengeRunning = !ldActiveEl.hidden;
+        panel.hidden = challengeRunning;
+        if (!challengeRunning && explorerVisible) updateExplorerLine();
+      });
+      obs.observe(ldActiveEl, { attributes: true, attributeFilter: ['hidden'] });
+    }
+
+    // Draw the initial explorer line (m=1, b=0)
+    updateExplorerLine();
+  })();
 })();
