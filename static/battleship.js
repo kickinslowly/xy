@@ -79,6 +79,27 @@
   let room = null;
   const mode = 'battleship';
 
+  // Grid mode configurations: classic (1–10) vs four-quadrant (-5 to 5)
+  const GRID_MODES = {
+    classic: {
+      size: 10, xMin: 1, xMax: 10, yMin: 1, yMax: 10,
+      xFromC(c) { return c + 1; },
+      yFromR(r) { return 10 - r; },
+      cFromX(x) { return x - 1; },
+      rFromY(y) { return 10 - y; },
+    },
+    quad: {
+      size: 11, xMin: -5, xMax: 5, yMin: -5, yMax: 5,
+      xFromC(c) { return c - 5; },
+      yFromR(r) { return 5 - r; },
+      cFromX(x) { return x + 5; },
+      rFromY(y) { return 5 - y; },
+    },
+  };
+  function gridConfig() { return GRID_MODES[(state && state.gridMode) || 'classic']; }
+  function GS() { return gridConfig().size; }
+  const gridModeSelect = qs('#gridModeSelect');
+
   // Local client role
   let myTeam = null; // 'A' | 'B' | null (spectator)
   let myName = makeFunnyName();
@@ -92,6 +113,7 @@
   function defaultState() {
     return {
       phase: 'lobby', // 'lobby' | 'countdown' | 'placement' | 'playing' | 'gameover'
+      gridMode: 'classic', // 'classic' (10×10, 1–10) | 'quad' (11×11, -5 to 5)
       ready: { A: false, B: false }, // placement readiness per team
       countdownEndsAt: null, // ms since epoch
       startedBy: null,
@@ -145,8 +167,8 @@
   }
 
   function placementGrid() {
-    // Build a 10x10 occupancy grid from placementShips
-    const g = Array.from({ length: 10 }, () => Array(10).fill(-1));
+    const n = GS();
+    const g = Array.from({ length: n }, () => Array(n).fill(-1));
     placementShips.forEach((sh, idx) => {
       for (const p of sh.coords) g[p.r][p.c] = idx;
     });
@@ -154,11 +176,12 @@
   }
 
   function canPlaceShipAt(r, c, size, horiz, grid) {
+    const n = GS();
     if (horiz) {
-      if (c + size > 10) return false;
+      if (c + size > n) return false;
       for (let i = 0; i < size; i++) { if (grid[r][c + i] !== -1) return false; }
     } else {
-      if (r + size > 10) return false;
+      if (r + size > n) return false;
       for (let i = 0; i < size; i++) { if (grid[r + i][c] !== -1) return false; }
     }
     return true;
@@ -173,8 +196,8 @@
   }
 
   function coordLabel(r, c) {
-    // Display as (X, Y) where X = c+1, Y = 10-r (matching the axis labels)
-    return `(${c + 1}, ${10 - r})`;
+    const gc = gridConfig();
+    return `(${gc.xFromC(c)}, ${gc.yFromR(r)})`;
   }
 
   function showPlacementToast(msg) {
@@ -208,17 +231,17 @@
   }
 
   function renderPlacementBoard() {
-    // Re-render your board during placement to show placed ships with colors
     const cells = qsa('.cell', yourBoardEl);
     cells.forEach(c => { c.className = 'cell'; c.innerHTML = ''; c.style.backgroundColor = ''; });
     const grid = placementGrid();
-    for (let r = 0; r < 10; r++) {
-      for (let c = 0; c < 10; c++) {
+    const n = GS();
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
         if (grid[r][c] !== -1) {
           const cell = yourBoardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
           if (cell) {
             cell.classList.add('ship', 'placement-placed');
-            cell.style.backgroundColor = SHIP_COLORS[grid[r][c]] + '33'; // semi-transparent
+            cell.style.backgroundColor = SHIP_COLORS[grid[r][c]] + '33';
           }
         }
       }
@@ -285,7 +308,7 @@
     const valid = canPlaceShipAt(r, c, def.size, horiz, grid);
     const coords = shipCoordsAt(r, c, def.size, horiz);
     for (const p of coords) {
-      if (p.r >= 10 || p.c >= 10) continue;
+      if (p.r >= GS() || p.c >= GS()) continue;
       const el = yourBoardEl.querySelector(`.cell[data-r="${p.r}"][data-c="${p.c}"]`);
       if (el) {
         el.classList.add('placement-preview');
@@ -393,6 +416,16 @@
     setupShareJoinUi();
     buildBoards();
 
+    if (gridModeSelect) {
+      gridModeSelect.addEventListener('change', () => {
+        if (!state || state.phase !== 'lobby') return;
+        state.gridMode = gridModeSelect.value;
+        buildBoards();
+        updateFireInputLabels();
+        broadcast();
+      });
+    }
+
     if (singlePlayerToggle) {
       singlePlayerToggle.addEventListener('change', () => {
         if (!state) return;
@@ -413,6 +446,32 @@
       setPresence(0, false);
     }
   })();
+
+  function updateFireInputLabels() {
+    const gc = gridConfig();
+    if (shotColEl) {
+      shotColEl.min = gc.xMin;
+      shotColEl.max = gc.xMax;
+      shotColEl.setAttribute('aria-label', `X coordinate (${gc.xMin} to ${gc.xMax})`);
+      shotColEl.placeholder = '—';
+    }
+    if (shotRowEl) {
+      shotRowEl.min = gc.yMin;
+      shotRowEl.max = gc.yMax;
+      shotRowEl.setAttribute('aria-label', `Y coordinate (${gc.yMin} to ${gc.yMax})`);
+      shotRowEl.placeholder = '—';
+    }
+  }
+
+  let _lastBuiltGridMode = 'classic';
+  function rebuildBoardsIfNeeded() {
+    const gm = (state && state.gridMode) || 'classic';
+    if (gm !== _lastBuiltGridMode) {
+      _lastBuiltGridMode = gm;
+      buildBoards();
+      updateFireInputLabels();
+    }
+  }
 
   function makeFunnyName() {
     const titles = ['Admiral', 'Captain', 'Commodore', 'Skipper', 'Bosun', 'Seadog'];
@@ -633,6 +692,7 @@
     if (state && remoteSeq < localSeq) return;
     const prevPhase = state ? state.phase : null;
     state = remote;
+    rebuildBoardsIfNeeded();
     // Our broadcast has been seen (or a higher-seq one has) — release the local fire-pending lock.
     _pendingFireUntil = 0;
     // If we just entered placement phase from a remote state, reset local placement
@@ -681,19 +741,25 @@
   }
 
   function buildBoard(root, isOwn) {
+    const gc = gridConfig();
+    const n = gc.size;
     root.innerHTML = '';
-    // Rows with left Y-axis numeric labels (1–10) and cells
-    for (let r = 0; r < 10; r++) {
+    root.style.gridTemplateColumns = `26px repeat(${n}, var(--cell))`;
+    if (n > 10) root.style.setProperty('--cell', 'clamp(24px, 4.8vmin, 46px)');
+    else root.style.removeProperty('--cell');
+    for (let r = 0; r < n; r++) {
       const y = document.createElement('div');
       y.className = 'lbl ylbl';
-      // Reverse Y so 1 is at the bottom, 10 at the top
-      y.textContent = String(10 - r);
+      const yVal = gc.yFromR(r);
+      y.textContent = String(yVal);
+      if (yVal === 0) y.classList.add('origin-label');
       root.appendChild(y);
-      for (let c = 0; c < 10; c++) {
+      for (let c = 0; c < n; c++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.r = String(r);
         cell.dataset.c = String(c);
+        if (gc.xFromC(c) === 0 || yVal === 0) cell.classList.add('axis-cell');
         if (!isOwn) {
           cell.addEventListener('click', onEnemyCellClick);
         }
@@ -705,22 +771,20 @@
         root.appendChild(cell);
       }
     }
-    // Clear hover preview when leaving the board
     if (isOwn) {
       root.addEventListener('mouseleave', onYourBoardPlacementLeave);
     }
-    // Bottom X-axis numeric labels (1–10)
     const bl = document.createElement('div');
-    bl.className = 'lbl bl'; // bottom-left corner
-    // Move X axis label to the far right; leave bottom-left corner blank
+    bl.className = 'lbl bl';
     bl.textContent = '';
     root.appendChild(bl);
-    for (let c = 0; c < 10; c++) {
+    for (let c = 0; c < n; c++) {
       const d = document.createElement('div');
       d.className = 'lbl bottom';
-      d.textContent = String(c + 1);
-      // Add absolute X label at the far right (visual only)
-      if (c === 9) {
+      const xVal = gc.xFromC(c);
+      d.textContent = String(xVal);
+      if (xVal === 0) d.classList.add('origin-label');
+      if (c === n - 1) {
         const xAxis = document.createElement('div');
         xAxis.className = 'axis x';
         xAxis.textContent = 'X';
@@ -728,7 +792,6 @@
       }
       root.appendChild(d);
     }
-    // Add absolute Y label at the top of the Y column
     const yAxis = document.createElement('div');
     yAxis.className = 'axis y';
     yAxis.textContent = 'Y';
@@ -736,34 +799,34 @@
   }
 
   function onEnemyCellClick(e) {
+    const gc = gridConfig();
     const r = Number(e.currentTarget.dataset.r);
     const c = Number(e.currentTarget.dataset.c);
     if (noobModeEl && noobModeEl.checked) {
       tryFireAt(r, c);
     } else {
-      // Fill coordinate inputs so students practice reading coordinates
-      if (shotColEl) shotColEl.value = c + 1;       // X = col + 1
-      if (shotRowEl) shotRowEl.value = 10 - r;       // Y = 10 - row (reversed axis)
+      if (shotColEl) shotColEl.value = gc.xFromC(c);
+      if (shotRowEl) shotRowEl.value = gc.yFromR(r);
       if (shotColEl) shotColEl.focus();
     }
   }
 
   function fireFromInputs() {
     if (!shotRowEl || !shotColEl) return;
+    const gc = gridConfig();
     const yStr = (shotRowEl.value || '').trim();
     const xStr = (shotColEl.value || '').trim();
     fireMsg('');
     const yNum = Number(yStr);
-    if (!(Number.isInteger(yNum) && yNum >= 1 && yNum <= 10)) {
-      return fireMsg('Enter whole-number Y from 1–10');
+    if (!(Number.isInteger(yNum) && yNum >= gc.yMin && yNum <= gc.yMax)) {
+      return fireMsg(`Enter whole-number Y from ${gc.yMin} to ${gc.yMax}`);
     }
     const xNum = Number(xStr);
-    if (!(Number.isInteger(xNum) && xNum >= 1 && xNum <= 10)) {
-      return fireMsg('Enter whole-number X from 1–10');
+    if (!(Number.isInteger(xNum) && xNum >= gc.xMin && xNum <= gc.xMax)) {
+      return fireMsg(`Enter whole-number X from ${gc.xMin} to ${gc.xMax}`);
     }
-    // With Y reversed (1 at bottom), map to row index: r = 10 - Y
-    const r = 10 - yNum;
-    const c = xNum - 1;
+    const r = gc.rFromY(yNum);
+    const c = gc.cFromX(xNum);
     tryFireAt(r, c);
   }
 
@@ -914,6 +977,12 @@
     // Hide lobby bar once the game is starting/started
     if (lobbyPanel) {
       lobbyPanel.style.display = (state.phase === 'lobby') ? '' : 'none';
+    }
+
+    // Sync grid mode select
+    if (gridModeSelect) {
+      gridModeSelect.value = state.gridMode || 'classic';
+      gridModeSelect.disabled = state.phase !== 'lobby';
     }
 
     // Placement panel visibility
@@ -1109,7 +1178,7 @@
               game_name: 'Battleship',
               outcome,
               room_pin: window.currentSessionPin,
-              details_json: { challenge_type: 'battleship', team: myTeam }
+              details_json: { challenge_type: state.gridMode === 'quad' ? 'battleship_quad' : 'battleship', team: myTeam, gridMode: state.gridMode || 'classic' }
             }).catch(() => {});
           }
           updateUiFromState._postedResult = true;
@@ -1145,18 +1214,24 @@
       return;
     }
 
-    // Clear classes on all cells
-    qsa('.cell', yourBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; c.style.backgroundColor = ''; });
-    qsa('.cell', enemyBoardEl).forEach(c => { c.className = 'cell'; c.innerHTML = ''; });
-
-    const letters = 'ABCDEFGHIJ'.split('');
+    // Clear classes on all cells then re-apply axis highlighting for quad mode
+    const gc = gridConfig();
+    qsa('.cell', yourBoardEl).forEach(cl => { cl.className = 'cell'; cl.innerHTML = ''; cl.style.backgroundColor = ''; });
+    qsa('.cell', enemyBoardEl).forEach(cl => { cl.className = 'cell'; cl.innerHTML = ''; });
+    if (state.gridMode === 'quad') {
+      [yourBoardEl, enemyBoardEl].forEach(board => {
+        qsa('.cell', board).forEach(cl => {
+          const cr = Number(cl.dataset.r), cc = Number(cl.dataset.c);
+          if (gc.xFromC(cc) === 0 || gc.yFromR(cr) === 0) cl.classList.add('axis-cell');
+        });
+      });
+    }
 
     if (myTeam) {
       const mine = state.boards[myTeam];
       // Show own ships
       for (const sh of mine.ships || []) {
         for (const p of sh.coords) {
-          const idx = p.r * 10 + p.c;
           const cell = yourBoardEl.querySelector(`.cell[data-r="${p.r}"][data-c="${p.c}"]`);
           if (cell) cell.classList.add('ship');
         }
@@ -1324,9 +1399,10 @@
     const enemy = myTeam === 'A' ? 'B' : 'A';
     const enemyBoard = state.boards[enemy];
     if (!enemyBoard) return;
+    const n = GS();
     const pool = [];
-    for (let r = 0; r < 10; r++) {
-      for (let c = 0; c < 10; c++) {
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
         const k = `${r},${c}`;
         if (!enemyBoard.hits?.[k] && !enemyBoard.misses?.[k]) pool.push({ r, c });
       }
@@ -1474,17 +1550,17 @@
 
     // Build my shots
     const myShots = (state.teams[botTeam]?.shotsLog) || [];
+    const n = GS();
     let pick = null;
     try {
-      pick = window.SimpleGridBot?.pickTarget({ gridSize: 10, myShots, parity: 2 });
+      pick = window.SimpleGridBot?.pickTarget({ gridSize: n, myShots, parity: 2 });
     } catch(_){ }
 
-    // Fallbacks if needed
     const shotMap = {};
     for (const s of myShots) { shotMap[`${s.r},${s.c}`] = true; }
     function randomUnshot(){
       const pool = [];
-      for (let r=0;r<10;r++) for (let c=0;c<10;c++){ const k = `${r},${c}`; if (!shotMap[k]) pool.push({r,c}); }
+      for (let r=0;r<n;r++) for (let c=0;c<n;c++){ const k = `${r},${c}`; if (!shotMap[k]) pool.push({r,c}); }
       return pool.length ? pool[Math.floor(Math.random()*pool.length)] : null;
     }
     if (!pick || shotMap[`${pick.r},${pick.c}`]) pick = randomUnshot();
@@ -1502,16 +1578,17 @@
 
   // Ship placement utilities
   function placeRandomShips() {
+    const n = GS();
     const sizes = [5, 4, 3, 3, 2];
     const ships = [];
-    const grid = Array.from({ length: 10 }, () => Array(10).fill(0));
+    const grid = Array.from({ length: n }, () => Array(n).fill(0));
 
     function canPlace(r, c, len, horiz) {
       if (horiz) {
-        if (c + len > 10) return false;
+        if (c + len > n) return false;
         for (let i = 0; i < len; i++) { if (grid[r][c+i]) return false; }
       } else {
-        if (r + len > 10) return false;
+        if (r + len > n) return false;
         for (let i = 0; i < len; i++) { if (grid[r+i][c]) return false; }
       }
       return true;
@@ -1519,8 +1596,8 @@
     function doPlace(name, len) {
       for (let attempts = 0; attempts < 500; attempts++) {
         const horiz = Math.random() < 0.5;
-        const r = Math.floor(Math.random() * 10);
-        const c = Math.floor(Math.random() * 10);
+        const r = Math.floor(Math.random() * n);
+        const c = Math.floor(Math.random() * n);
         if (!canPlace(r, c, len, horiz)) continue;
         const coords = [];
         for (let i = 0; i < len; i++) {
@@ -1532,7 +1609,6 @@
         ships.push({ name, size: len, coords, hits: [] });
         return true;
       }
-      // If we somehow failed a lot, start over
       return false;
     }
 

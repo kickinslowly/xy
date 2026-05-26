@@ -2405,6 +2405,12 @@
     }
   }
 
+  let _drawRafId = 0;
+  function requestDraw() {
+    if (_drawRafId) return;
+    _drawRafId = requestAnimationFrame(() => { _drawRafId = 0; draw(); });
+  }
+
   function draw() {
     clear();
     drawGrid();
@@ -3039,7 +3045,7 @@
         if (dx !== 0 || dy !== 0) {
           origin.x += dx;
           origin.y += dy;
-          draw();
+          requestDraw();
         }
       }
       pinchLastMid = mid;
@@ -3052,8 +3058,7 @@
       const ms = getMousePos(evt);
       const mw = screenToWorld(ms);
       reflect.preview = snapToGrid(mw);
-      // Only redraw if not dragging/panning to avoid extra work
-      if (!isDragging) draw();
+      if (!isDragging) requestDraw();
     }
     // Update rotate preview while dragging
     if (rotate.active && rotate.isRotating && rotate.pivot && !isPanning) {
@@ -3065,13 +3070,11 @@
         const a0 = Math.atan2(v0.y, v0.x);
         const a1 = Math.atan2(vec.y, vec.x);
         let ang = a1 - a0;
-        // normalize to [-PI, PI] for stability
         if (ang > Math.PI) ang -= 2 * Math.PI;
         if (ang < -Math.PI) ang += 2 * Math.PI;
         rotate.previewAngle = ang;
-        // Sync UI angle inputs
         updateRotateUi();
-        draw();
+        requestDraw();
       }
       evt.preventDefault();
       return;
@@ -3088,7 +3091,7 @@
         // avoid zero and extremes
         scale.previewFactor = clamp(k, 0.01, 100);
         updateScaleUi();
-        draw();
+        requestDraw();
       }
       evt.preventDefault();
       return;
@@ -3101,7 +3104,7 @@
       const curr = snapToGrid(mw);
       if (translate.start) {
         translate.previewOffset = { x: curr.x - translate.start.x, y: curr.y - translate.start.y };
-        draw();
+        requestDraw();
       }
       evt.preventDefault();
       return;
@@ -3116,7 +3119,7 @@
           origin.x += dx;
           origin.y += dy;
           panMoved = true;
-          draw();
+          requestDraw();
         }
       }
       lastMousePos = ms;
@@ -3159,7 +3162,7 @@
         setV(v3Ref, rot(v3));
         updateImageDependentCorner(im);
         imageAction.moved = true;
-        draw();
+        requestDraw();
         evt.preventDefault();
         return;
       }
@@ -3208,7 +3211,7 @@
         }
         updateImageDependentCorner(im);
         imageAction.moved = true;
-        draw();
+        requestDraw();
         evt.preventDefault();
         return;
       }
@@ -3237,7 +3240,7 @@
         if (anyChanged) {
           updateImageDependentCorner(dragImage);
           imageDragMoved = true;
-          draw();
+          requestDraw();
         }
       }
       evt.preventDefault();
@@ -3258,7 +3261,7 @@
       if (isRectSelecting) {
         rectCurrent = ms;
         rectMoved = true;
-        draw();
+        requestDraw();
       }
       evt.preventDefault();
       return;

@@ -835,6 +835,12 @@
       p.usedSecondJump = true;
       if (p.id === myId) { try { if (window.SoundFX) window.SoundFX.play('jump'); } catch(_){} }
     }
+    // Variable jump height: releasing jump early cuts upward velocity
+    const upRelease = p.prevUp && !inp.up;
+    if (upRelease && p.vy < 0) {
+      p.vy *= 0.4;
+    }
+
     p.vy += gravity * dt;
 
     // Integrate
@@ -1443,10 +1449,15 @@
       const a = ps[i];
       const powered = a.powerEndsAt > nowMs;
       if (!powered) continue;
+      const killScale = 1.6;
+      const killW = a.w * killScale;
+      const killH = a.h * killScale;
+      const killX = a.x + a.w / 2 - killW / 2;
+      const killY = a.y + a.h - killH;
       for (let j = 0; j < ps.length; j++) {
         if (i === j) continue;
         const b = ps[j];
-        if (rectOverlap(a.x, a.y, a.w, a.h, b.x, b.y, b.w, b.h)) {
+        if (rectOverlap(killX, killY, killW, killH, b.x, b.y, b.w, b.h)) {
           // instant kill: drop from sky
           b.x = Math.random() * (W - 80) + 40;
           b.y = -160;

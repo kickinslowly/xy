@@ -294,6 +294,14 @@
 .board .cell:hover {
   background-color: var(--mode-dim, rgba(76,201,240,0.08));
 }
+.board .cell.axis-cell {
+  border-left-color: color-mix(in srgb, var(--accent, #7a5cff) 40%, transparent);
+  border-top-color: color-mix(in srgb, var(--accent, #7a5cff) 40%, transparent);
+}
+.board .lbl.origin-label {
+  color: var(--accent, #7a5cff);
+  font-weight: 700;
+}
 
 #enemyBoard .cell { cursor: default; }
 

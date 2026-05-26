@@ -4,7 +4,7 @@
 
 ### Last Action
 - **Date**: 2026-05-26
-- **Action**: Sessions 12-17 (27 commits). Full product overhaul from 7-agent audit through 5-phase dev plan.
+- **Action**: Session 18. Achievement overhaul + four-quadrant battleship.
 - **Status**: 7 game modes, all fully featured:
   - Coord plane: 8 challenge types, touch/pinch, dark canvas, session summary, score counter
   - Line Graph: 3 challenges, slope explorer sliders, sample datasets, CSV paste, dark chart
@@ -322,3 +322,27 @@
 - **Files Changed**: static/meme_dash.js (substep, ceiling, tab-blur, hideCelebration reset, _powerupCountdownIv), static/ratios_mode.js (touch handlers), static/battleship.js (shotSeq + lock + banner + fix B), static/meme_wars.js (same), static/main.js (vertical-line bug A fix)
 - **Tests**: All edited JS `node --check` OK; app.py AST + boot OK with 20 routes both pre- and post-audit-fixes
 - **Discovered**: nothing new this round; the self-audit pass cleaned up its own work
+
+### Session 18 - 2026-05-26
+- **Goal**: Continue towards goals — achievement overhaul, four-quadrant battleship, bug fixes, performance
+- **Work Done**:
+  - **Achievement overhaul** (G3): Expanded from repetitive "complete N challenges" to diverse types:
+    - Fixed streak achievements (streak_5, streak_10) — were seeded but never checked (bug)
+    - Added streak_20 ("Unstoppable"), accuracy_80/90 ("Sharp Shooter"/"Sniper"), mastery_3/5/10 ("Standards Student/Scholar/Master")
+    - Added first-win per multiplayer mode: Admiral, Meme Commander, Speed Demon
+    - Added total_1000 ("Grand Thousand"), fixed Achievement.mode column nullable
+    - Fixed title update logic to only rewrite template (mode_tN) achievements
+    - Total: ~42 achievements with 6 check types: count, explore, streak, accuracy, mastery, total
+  - **Four-quadrant battleship** (G5): Lobby-selectable "Classic (1-10)" vs "Four Quadrant (-5 to 5)":
+    - GRID_MODES config with coordinate conversion helpers
+    - Dynamic 11×11 grid with axis-cell highlighting and origin labels
+    - Fire validation, placement, render, autoFire, botMove all use dynamic GS()
+    - Remote state sync: boards auto-rebuild when grid mode changes
+    - Standards mapping: battleship_quad → 5.G.A.1 + 6.NS.C.6b + 6.NS.C.8
+  - **Meme Dash variable jump height** (G8): 0.4x velocity cut on button release for short hops
+  - **Meme Dash power-up kill hitbox** (G8): Hitbox now matches 1.6x rendered scale
+  - **Coord plane rAF batching** (G8): All pointermove draw() calls use requestDraw() dedup
+  - **Dead code cleanup**: Removed `letters` from battleship.js, dead ternary from meme_wars cssUrl
+  - **Meme Wars duplicate const fix**: Pre-existing `const hasA` double-declaration in updateUiFromState (syntax error)
+- **Files Changed**: app.py (achievements + CHALLENGE_STANDARD_MAP), static/battleship.js (GRID_MODES + dynamic grid), static/meme_dash.js (variable jump + kill hitbox), static/meme_wars.js (cssUrl + hasA fix), static/main.js (requestDraw rAF), templates/battleship.html (grid select), static/css/game.css (axis-cell, origin-label)
+- **Tests**: All JS node --check OK; app.py AST+boot OK; 20 routes

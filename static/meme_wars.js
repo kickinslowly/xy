@@ -648,12 +648,9 @@
     try { if (singlePlayerToggle) singlePlayerToggle.checked = !!(state.bot && state.bot.enabled); } catch(_){ }
     if (state.bot && state.bot.enabled) { try { ensureBotPresence(true); } catch(_){ } }
 
-    // Enable/disable Start button based on team presence
-    const hasA = Object.keys(state.teams.A.members || {}).length > 0;
-    const hasB = Object.keys(state.teams.B.members || {}).length > 0;
-    const canStart = hasA && hasB && state.phase === 'lobby';
+    // Enable/disable Start button based on team presence (hasA/hasB from above)
     if (btnStart) {
-      btnStart.disabled = !canStart;
+      btnStart.disabled = !(hasA && hasB) || state.phase !== 'lobby';
       btnStart.textContent = (state.phase === 'countdown') ? 'Starting…' : 'Start Game';
     }
 
@@ -959,10 +956,9 @@
     }
   }
   function cssUrl(s) {
-    // Allow either relative filename or full URL
     if (!s) return '';
     if (/^https?:/i.test(s)) return s;
-    return `${window.location.origin}${window.location.pathname.includes('/meme-wars') ? '' : ''}/static/${encodeURIComponent(s)}`;
+    return `${window.location.origin}/static/${encodeURIComponent(s)}`;
   }
 
   function placeRandomMemes(images) {

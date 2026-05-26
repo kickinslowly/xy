@@ -72,13 +72,15 @@
 - 🔲 Loading skeleton screens (replace hidden/blank states while APIs resolve)
 
 ### Active Tasks — Achievement Overhaul (NEW)
-- 🔲 Current: 18 identical "Complete N challenges" achievements. Needs variety:
-  - Accuracy: "Sharp Shooter — 90% accuracy in 20 games"
-  - Streak: "On Fire — 10 correct in a row"
-  - Speed: "Lightning — answer in under 2 seconds"
-  - Exploration: "Renaissance — play all 7 modes"
-  - Social: "Rival — beat a friend in Battleship"
-  - Mastery: "Standards Scholar — reach 80% mastery in 5 standards"
+- ✅ Achievement variety overhaul: 30→42 achievements with diverse types:
+  - ✅ Accuracy: Sharp Shooter (80%/25 games), Sniper (90%/40 games)
+  - ✅ Streak: On Fire (5), Blazing (10), Unstoppable (20) — check logic fixed (was seeded but never checked)
+  - ✅ Exploration: Renaissance Explorer (3 modes), Renaissance Master (all 7)
+  - ✅ Mastery: Standards Student (3@70%), Standards Scholar (5@80%), Standards Master (10@80%)
+  - ✅ First Win: Admiral (Battleship), Meme Commander (Meme Wars), Speed Demon (Meme Dash)
+  - ✅ Milestones: Century (100), Half Thousand (500), Grand Thousand (1000)
+  - 🔲 Speed: "Lightning — answer in under 2 seconds" (needs response_time in details_json)
+  - 🔲 Social: "Rival — beat a friend in Battleship"
 - 🔲 Subitize speed badges: track response time, "Lightning" for under 2s answers
 - 🔲 Challenge session summary modal: stats/accuracy/difficulty/standards/coins after ending
 
@@ -180,7 +182,7 @@
 ### Active Tasks — Battleship/Meme Wars Math (NEW)
 - ✅ **Manual ship/meme placement**: Battleship ship placement phase added.
 - 🔲 **Math-problem shields**: Hit a cell → solve problem to confirm hit. Wrong = deflected.
-- 🔲 **Four-quadrant grid**: Extend to (-5,-5)→(5,5). Teaches 6.NS.C.6 negative coordinates.
+- ✅ **Four-quadrant grid**: Selectable 11×11 grid (-5 to 5) with axis highlighting, dynamic fire inputs, bot AI support. Maps to 6.NS.C.6b + 6.NS.C.8.
 - 🔲 **Coordinate notation training**: Force typing (x, y) format to fire
 - 🔲 **Shot log**: "You fired at (3, 7) — Miss!" reinforces coordinate notation
 - 🔲 **Variable grid sizes**: 5x5 for younger, 15x15 for advanced
@@ -256,10 +258,10 @@
 - ✅ **BUG B7**: Line Graph `toFractionApprox` is stale copy — displays 333333/1000000 instead of 1/3
 - ✅ **BUG B8**: Line Graph `stepSize: 1` hardcoded — breaks at large ranges
 - ✅ **BUG B10**: Ratios submit has no debounce — fast double-click double-scores
-- 🔲 Meme Wars `cssUrl` dead code (both branches return empty string, `meme_wars.js:876`)
-- 🔲 Battleship dead variables (`before` at line 551, `letters` at line 773)
-- 🔲 Meme Dash power-up kill hitbox doesn't account for 1.6x rendered scale
-- 🔲 Coord plane `draw()` called on every mousemove — no rAF batching
+- ✅ Meme Wars `cssUrl` dead ternary removed
+- ✅ Battleship dead variable `letters` removed
+- ✅ Meme Dash power-up kill hitbox now matches 1.6x rendered scale
+- ✅ Coord plane pointermove `draw()` calls batched via `requestDraw()` (rAF dedup)
 
 ### Active Tasks — Architecture
 - 🔲 Extract shared Battleship/Meme Wars code (~600 LOC duplicated) into `gridGameBase.js`
@@ -284,7 +286,7 @@
 
 ### Active Tasks — New (Session 12)
 - ✅ Meme Dash: coyote time (80ms grace after leaving edge) + jump buffer (100ms before landing)
-- 🔲 Meme Dash: variable jump height (cut velocity on button release)
+- ✅ Meme Dash: variable jump height (0.4x velocity cut on button release)
 - 🔲 PWA: Service worker + manifest.json for Chromebook install + offline shell cache
 - 🔲 Add favicon, theme-color meta, apple-touch-icon
 
