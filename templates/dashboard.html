@@ -185,7 +185,7 @@
   function renderAchievements(list){
     const root = document.getElementById('achievements');
     root.innerHTML = '';
-    if(!list.length){ root.textContent = 'No achievements defined.'; return; }
+    if(!list.length){ root.innerHTML = '<p class="muted">Play your first game to start earning achievements! Each mode has milestones to unlock.</p>'; return; }
     const LABELS = { plane: 'Coordinate Plane', battleship: 'Battleship', memewars: 'Meme Wars', memedash: 'Meme Dash', ratios: 'Ratios', line: 'Line Graph' };
     list.forEach(a => {
       const div = document.createElement('div');
@@ -275,8 +275,13 @@
 
   function renderStandards(standards, strands){
     var card = document.getElementById('standardsCard');
-    if (!card || !standards || !standards.length) return;
+    if (!card) return;
     card.hidden = false;
+    if (!standards || !standards.length) {
+      var sg = document.getElementById('strandsGrid');
+      if (sg) sg.innerHTML = '<p class="muted" style="grid-column:1/-1;text-align:center;">Start playing to see which math skills you\'re building! Each game practices real Common Core standards.</p>';
+      return;
+    }
 
     var attempted = standards.filter(function(s){ return s.attempted; }).length;
     var total = standards.length;

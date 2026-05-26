@@ -151,6 +151,27 @@
 
       <div id="seriesContainer"></div>
 
+      <!-- Slope & Intercept Explorer -->
+      <div id="slopeExplorer" class="slope-explorer">
+        <div class="slope-explorer-header">
+          <h3>Explore y = mx + b</h3>
+          <button id="slopeExplorerToggle" type="button" class="btn-light btn-sm">Hide</button>
+        </div>
+        <div id="slopeExplorerBody" class="slope-explorer-body">
+          <div class="slider-row">
+            <label for="slopeSlider">m <small>(slope)</small></label>
+            <input type="range" id="slopeSlider" min="-5" max="5" step="0.1" value="1" />
+            <span id="slopeValue" class="slider-val">1</span>
+          </div>
+          <div class="slider-row">
+            <label for="interceptSlider">b <small>(intercept)</small></label>
+            <input type="range" id="interceptSlider" min="-10" max="10" step="0.5" value="0" />
+            <span id="interceptValue" class="slider-val">0</span>
+          </div>
+          <div class="slider-equation" id="sliderEquation">y = x</div>
+        </div>
+      </div>
+
       <div id="emptySeriesHint" class="empty-hint">
         <div class="empty-hint-icon">+</div>
         <p>Add a data series to start graphing</p>

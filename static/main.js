@@ -570,6 +570,7 @@
   const FRAC_SLOPES = [1/2, 1/3, 2/3, 3/4, 3/2, 4/3];
 
   function adjustDifficulty(correct) {
+    challengeAttempted++;
     if (!window.AdaptiveDifficulty) return;
     const r = window.AdaptiveDifficulty.recordResult(ADAPTIVE_MODE_KEY, !!correct);
     challengeDifficulty = r.level;
@@ -1083,6 +1084,36 @@
     const txtEl = failToast.querySelector('.fail-text');
     if (txtEl && _failToastDefaultHTML) txtEl.innerHTML = _failToastDefaultHTML;
   }
+  // Challenge session summary modal
+  function showChallengeSummary() {
+    const modal = document.getElementById('challengeSummary');
+    if (!modal) return;
+    const accuracy = challengeAttempted > 0 ? Math.round((challengeCorrectCount / challengeAttempted) * 100) : 0;
+    const correctEl = document.getElementById('summaryCorrect');
+    const totalEl = document.getElementById('summaryTotal');
+    const accEl = document.getElementById('summaryAccuracy');
+    const diffEl = document.getElementById('summaryDifficulty');
+    if (correctEl) correctEl.textContent = String(challengeCorrectCount);
+    if (totalEl) totalEl.textContent = String(challengeAttempted);
+    if (accEl) accEl.textContent = accuracy + '%';
+    if (diffEl) diffEl.textContent = DIFF_LABELS[challengeDifficulty] || '—';
+    modal.hidden = false;
+    modal.focus();
+    try {
+      if (window.SoundFX) {
+        if (accuracy >= 70) window.SoundFX.play('win');
+        else if (accuracy >= 50) window.SoundFX.play('levelup');
+      }
+    } catch (_) {}
+  }
+  (function() {
+    const closeBtn = document.getElementById('summaryClose');
+    if (closeBtn) closeBtn.addEventListener('click', function() {
+      const modal = document.getElementById('challengeSummary');
+      if (modal) modal.hidden = true;
+    });
+  })();
+
   function clearAllSilently() {
     // Reset all content without confirmation. Does NOT push history or
     // broadcast — challenge feedback (wrong-answer reveal) calls this every 3s

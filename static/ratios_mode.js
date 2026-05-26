@@ -989,6 +989,14 @@
       if (inp) inp.value = '';
     } else if (t === 'table') {
       qsa('.rt-blank').forEach(inp => { inp.value = ''; });
+    } else if (t === 'scale') {
+      const inp = qs('#scaleInput');
+      if (inp) inp.value = '';
+    } else if (t === 'simplify') {
+      const inpA = qs('#simplifyA');
+      const inpB = qs('#simplifyB');
+      if (inpA) inpA.value = '';
+      if (inpB) inpB.value = '';
     } else {
       resetBoard();
     }
@@ -1017,7 +1025,7 @@
       p.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
     if (selected === 'master') {
-      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table'];
+      const kinds = ['create', 'partpart', 'partwhole', 'equiv', 'unitrate', 'table', 'scale', 'simplify'];
       const pick = kinds[Math.floor(Math.random() * kinds.length)];
       sharedState.current = generateChallenge(pick);
     } else {

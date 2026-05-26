@@ -1751,6 +1751,33 @@ body.your-turn-active::after {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--mode, var(--accent)) 25%, transparent);
 }
 
+/* Scale / Simplify challenge inputs */
+.scale-input {
+  width: 80px;
+  padding: 6px 10px;
+  font-weight: 900;
+  font-size: 22px;
+  text-align: center;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: border-color 0.15s;
+}
+.scale-input:focus {
+  outline: none;
+  border-color: var(--mode, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mode, var(--accent)) 25%, transparent);
+}
+.simplify-inputs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
 /* Victory panel */
 .victory-panel { text-align: center; }
 .victory-title { font-size: clamp(24px, 6vmin, 48px); margin: 0 0 8px; }
@@ -3139,3 +3166,73 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
 }
 .math-gate.correct { border-color: #22c55e; box-shadow: 0 0 30px rgba(34, 197, 94, 0.4); }
 .math-gate.incorrect { border-color: #ef4444; box-shadow: 0 0 30px rgba(239, 68, 68, 0.4); }
+
+/* ---- Challenge Summary Modal ---- */
+.challenge-summary {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+.challenge-summary[hidden] { display: none !important; }
+.summary-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 36px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  max-width: 420px;
+  width: 90vw;
+  animation: summaryIn 0.2s ease-out;
+}
+@keyframes summaryIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.summary-title {
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0 0 20px 0;
+  color: var(--text);
+}
+.summary-stats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+}
+.summary-num {
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--mode, var(--accent));
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.summary-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.summary-panel .btn-3d.success {
+  margin-top: 4px;
+  min-width: 120px;
+  font-size: 16px;
+}
+@media (max-width: 480px) {
+  .summary-panel { padding: 20px 18px; }
+  .summary-stats { gap: 12px; }
+  .summary-num { font-size: 28px; }
+}
