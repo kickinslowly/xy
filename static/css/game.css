@@ -3030,3 +3030,14 @@ input:checked + .slider:before { transform: translateX(26px); background-color: 
   .modes-nav::-webkit-scrollbar { display: none; }
   .mode-link { white-space: nowrap; flex-shrink: 0; font-size: 13px; padding: 6px 10px; }
 }
+
+/* ---- 27. Reduced Motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .confetti-piece, .rain-drop, .balloon, .emoji-float { display: none !important; }
+  .splash { transition: none !important; }
+}

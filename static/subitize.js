@@ -16,7 +16,10 @@
   // Flash mode state
   let flashMode = localStorage.getItem('subitize_flash') === 'true';
   let flashTimer = null;
-  const FLASH_DURATIONS = [3000, 2000, 1500, 1000]; // Beginner, Developing, Proficient, Advanced
+  const FLASH_DURATIONS = [3000, 2000, 1500, 1000];
+
+  // Ten-frame mode state
+  let tenFrameMode = localStorage.getItem('subitize_tenframe') === 'true';
 
   // DOM refs
   const canvas = document.getElementById('subitizeCanvas');
@@ -52,6 +55,20 @@
       if (flashMode && currentProblem) {
         startFlash();
       }
+    });
+  }
+
+  // Ten-frame toggle
+  const tenFrameToggle = document.getElementById('tenFrameToggle');
+  if (tenFrameToggle) {
+    if (tenFrameMode) tenFrameToggle.classList.add('active');
+    tenFrameToggle.querySelector('.tf-label').textContent = tenFrameMode ? '10-Frame: ON' : '10-Frame: OFF';
+    tenFrameToggle.addEventListener('click', () => {
+      tenFrameMode = !tenFrameMode;
+      localStorage.setItem('subitize_tenframe', tenFrameMode ? 'true' : 'false');
+      tenFrameToggle.classList.toggle('active', tenFrameMode);
+      tenFrameToggle.querySelector('.tf-label').textContent = tenFrameMode ? '10-Frame: ON' : '10-Frame: OFF';
+      if (currentProblem) renderProblem(currentProblem);
     });
   }
 
@@ -237,6 +254,90 @@
     ctx.setLineDash([]);
   }
 
+  function drawTenFrame(cx, cy, cellSize, filled, color, crossedOut) {
+    const gapX = cellSize * 0.1;
+    const gapY = cellSize * 0.1;
+    const cw = cellSize;
+    const ch = cellSize;
+    const totalW = 5 * cw + 4 * gapX;
+    const totalH = 2 * ch + gapY;
+    const startX = cx - totalW / 2;
+    const startY = cy - totalH / 2;
+
+    for (let i = 0; i < 10; i++) {
+      const col = i % 5;
+      const row = Math.floor(i / 5);
+      const x = startX + col * (cw + gapX);
+      const y = startY + row * (ch + gapY);
+
+      // Cell border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, cw, ch);
+
+      if (i < filled) {
+        const isCrossed = crossedOut && i >= (filled - crossedOut);
+        // Filled dot
+        ctx.beginPath();
+        ctx.arc(x + cw / 2, y + ch / 2, cw * 0.32, 0, Math.PI * 2);
+        ctx.fillStyle = isCrossed ? '#555' : color;
+        ctx.fill();
+        if (isCrossed) {
+          const dx = cw * 0.22;
+          ctx.beginPath();
+          ctx.moveTo(x + cw / 2 - dx, y + ch / 2 - dx);
+          ctx.lineTo(x + cw / 2 + dx, y + ch / 2 + dx);
+          ctx.moveTo(x + cw / 2 + dx, y + ch / 2 - dx);
+          ctx.lineTo(x + cw / 2 - dx, y + ch / 2 + dx);
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function renderTenFrame(p, w, h) {
+    const cellSize = Math.min(w / 8, h / 4, 50);
+
+    if (p.op === 'subtract') {
+      drawTenFrame(w / 2, h / 2, cellSize, p.totalDots, COLORS[0], p.crossedOut);
+      return;
+    }
+    if (p.op === 'add') {
+      const gap = cellSize * 2;
+      drawTenFrame(w / 2 - gap - cellSize * 2, h / 2, cellSize, p.dotCounts[0], COLORS[0]);
+      drawTenFrame(w / 2 + gap + cellSize * 2, h / 2, cellSize, p.dotCounts[1], COLORS[1]);
+      // Plus sign between
+      ctx.fillStyle = '#8899aa';
+      ctx.font = `bold ${cellSize}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('+', w / 2, h / 2);
+      return;
+    }
+    // multiply / divide: show multiple ten-frames
+    const numFrames = p.groups;
+    const cols = Math.min(numFrames, 3);
+    const rows = Math.ceil(numFrames / cols);
+    const frameW = (5 * cellSize + 4 * cellSize * 0.1);
+    const frameH = (2 * cellSize + cellSize * 0.1);
+    const spacingX = frameW + cellSize;
+    const spacingY = frameH + cellSize * 0.6;
+    const totalW = cols * spacingX - cellSize;
+    const totalH = rows * spacingY - cellSize * 0.6;
+    const startX = (w - totalW) / 2 + frameW / 2;
+    const startY = (h - totalH) / 2 + frameH / 2;
+
+    for (let i = 0; i < numFrames; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cx = startX + col * spacingX;
+      const cy = startY + row * spacingY;
+      drawTenFrame(cx, cy, cellSize, p.dotsPerGroup, COLORS[i % COLORS.length]);
+    }
+  }
+
   function renderProblem(p) {
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth;
@@ -245,6 +346,11 @@
     canvas.height = h * dpr;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
+
+    if (tenFrameMode) {
+      renderTenFrame(p, w, h);
+      return;
+    }
 
     if (p.op === 'subtract') {
       const radius = Math.min(w, h) * 0.35;
