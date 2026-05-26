@@ -4,8 +4,8 @@
 
 ### Last Action
 - **Date**: 2026-05-26
-- **Action**: Sessions 12-15 marathon (13 commits). Full product overhaul across all 5 development plan phases. See git log for details.
-- **Status**: 7 game modes live. 11 bugs fixed. Sound system across all modes. Coord plane: 8 challenge types + touch/pointer + pinch-to-zoom + dark canvas. Line Graph: 3 challenge types + sample datasets + dark chart. Battleship: ship placement phase. Ratios: 7 types (incl unit rate, table). Subitize: flash + ten-frame. Meme Dash: math gates + touch + coyote time. 26 achievements (18 per-mode + 8 cross-mode). PWA manifest. Inline CSS extracted. Skip-to-content a11y. Remaining: teacher dashboard, backend blueprints, four-quadrant grid, tape diagrams.
+- **Action**: Sessions 12-16 marathon (23 commits). Full product overhaul across all 5 development plan phases.
+- **Status**: 7 game modes, all fully featured. Coord plane: 8 challenge types + touch + dark canvas + session summary. Line Graph: 3 challenges + slope explorer sliders + sample datasets + CSV paste + dark chart. Battleship: ship placement. Ratios: 9 types (incl unit rate, table, scale, simplify). Subitize: flash + ten-frame (mode now registered in backend). Meme Dash: math gates + touch + coyote time + procedural levels. 30 achievements (21 per-mode + 9 cross-mode). PWA manifest. Sound system. Inline CSS extracted. Mobile responsive. Skip-to-content. First-visit tour. Welcome banner. Remaining: teacher dashboard, backend blueprints, four-quadrant grid, tape diagrams.
 
 ### What Exists
 - Full Flask app with 6 game modes + dashboard + shop + arcade lobby home page
